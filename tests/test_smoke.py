@@ -206,6 +206,29 @@ def test_setup_script_is_executable():
     assert setup.stat().st_mode & 0o111, "setup.sh must be executable"
 
 
+def test_setup_script_has_noninteractive_flag():
+    setup = Path(__file__).parent.parent / "install" / "setup.sh"
+    text = setup.read_text()
+    assert "--non-interactive" in text
+
+
+def test_setup_script_has_prompt_functions():
+    setup = Path(__file__).parent.parent / "install" / "setup.sh"
+    text = setup.read_text()
+    for fn in ("prompt()", "prompt_bool()", "configure_interactive()",
+               "configure_noninteractive()", "write_config()"):
+        assert fn in text, f"setup.sh must define {fn}"
+
+
+def test_setup_script_writes_all_config_keys():
+    setup = Path(__file__).parent.parent / "install" / "setup.sh"
+    text = setup.read_text()
+    for key in ("lcd_addr", "button_pin", "buzzer_pin", "refresh",
+                "temp_warn", "cpu_warn", "mem_warn",
+                "power", "cpu", "temp", "net"):
+        assert key in text, f"setup.sh must write config key: {key}"
+
+
 def test_check_script_exists():
     check = Path(__file__).parent.parent / "install" / "check.sh"
     assert check.exists()
