@@ -1,0 +1,27 @@
+# Porcupine system monitor — configuration file
+# Copy to /etc/porcupine/porcupine.conf and edit as needed.
+# CLI flags always override values set here.
+
+[monitors]
+# Set to false to disable a monitor permanently.
+power = true
+cpu   = true
+temp  = true
+net   = true
+
+[hardware]
+# I2C address of the LCD backpack (PCF8574). Use hex (0x27) or decimal (39).
+lcd_addr   = 0x27
+# BCM GPIO pin numbers
+button_pin = 17
+buzzer_pin = 18
+
+[display]
+# Seconds between automatic screen transitions.
+refresh = 3
+
+[alerts]
+# Thresholds that trigger buzzer alerts.
+temp_warn = 80   # °C — CPU temperature
+cpu_warn  = 90   # %  — sustained CPU usage (for 30 s)
+mem_warn  = 90   # %  — RAM usage
