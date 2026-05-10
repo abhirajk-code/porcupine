@@ -1,12 +1,16 @@
 [Unit]
 Description=Porcupine system monitor
-After=network.target
+Documentation=https://github.com/abhirajk-code/porcupine
+After=network.target multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/porcupine
+ExecStart=@@PORCUPINE_BIN@@ --config /etc/porcupine/porcupine.conf
 Restart=on-failure
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=porcupine
 
 [Install]
 WantedBy=multi-user.target

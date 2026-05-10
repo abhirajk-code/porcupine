@@ -14,7 +14,7 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     Returns an empty dict if the file does not exist or cannot be read,
     so callers fall back to hardcoded defaults without error.
     """
-    cp = configparser.ConfigParser()
+    cp = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
     if not cp.read(path):
         return {}
 
