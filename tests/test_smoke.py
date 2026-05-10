@@ -206,27 +206,60 @@ def test_setup_script_is_executable():
     assert setup.stat().st_mode & 0o111, "setup.sh must be executable"
 
 
-def test_setup_script_has_noninteractive_flag():
+def test_setup_script_orchestrates_three_steps():
     setup = Path(__file__).parent.parent / "install" / "setup.sh"
     text = setup.read_text()
-    assert "--non-interactive" in text
+    assert "1_install.sh" in text
+    assert "2_test.sh" in text
+    assert "3_enable.sh" in text
 
 
-def test_setup_script_has_prompt_functions():
-    setup = Path(__file__).parent.parent / "install" / "setup.sh"
-    text = setup.read_text()
+def test_step1_has_prompt_functions():
+    step1 = Path(__file__).parent.parent / "install" / "1_install.sh"
+    text = step1.read_text()
     for fn in ("prompt()", "prompt_bool()", "configure_interactive()",
                "configure_noninteractive()", "write_config()"):
-        assert fn in text, f"setup.sh must define {fn}"
+        assert fn in text, f"1_install.sh must define {fn}"
 
 
-def test_setup_script_writes_all_config_keys():
-    setup = Path(__file__).parent.parent / "install" / "setup.sh"
-    text = setup.read_text()
+def test_step1_writes_all_config_keys():
+    step1 = Path(__file__).parent.parent / "install" / "1_install.sh"
+    text = step1.read_text()
     for key in ("lcd_addr", "button_pin", "buzzer_pin", "refresh",
                 "temp_warn", "cpu_warn", "mem_warn",
                 "power", "cpu", "temp", "net"):
-        assert key in text, f"setup.sh must write config key: {key}"
+        assert key in text, f"1_install.sh must write config key: {key}"
+
+
+def test_step2_tests_all_interfaces():
+    step2 = Path(__file__).parent.parent / "install" / "2_test.sh"
+    text = step2.read_text()
+    for subcmd in ("lcd", "buzzer", "button-short", "button-long",
+                   "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net"):
+        assert subcmd in text, f"2_test.sh must invoke test_hardware.py {subcmd}"
+
+
+def test_step3_enables_service():
+    step3 = Path(__file__).parent.parent / "install" / "3_enable.sh"
+    text = step3.read_text()
+    assert "systemctl enable" in text
+    assert "systemctl is-active" in text
+
+
+def test_test_hardware_py_has_all_commands():
+    hw = Path(__file__).parent.parent / "install" / "test_hardware.py"
+    text = hw.read_text()
+    for cmd in ("lcd", "buzzer", "button-short", "button-long",
+                "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net"):
+        assert f'"{cmd}"' in text, f"test_hardware.py must handle command: {cmd}"
+
+
+def test_all_install_scripts_executable():
+    install = Path(__file__).parent.parent / "install"
+    for name in ("setup.sh", "1_install.sh", "2_test.sh", "3_enable.sh", "check.sh"):
+        f = install / name
+        assert f.exists(), f"{name} must exist"
+        assert f.stat().st_mode & 0o111, f"{name} must be executable"
 
 
 def test_check_script_exists():
