@@ -46,7 +46,7 @@ class Button:
         self._held_cb: Callable | None = None
         self._held_timer: threading.Timer | None = None
         self._running = False
-        self._cb = None  # lgpio callback handle
+        self._poll_thread: threading.Thread | None = None  # lgpio polling thread
 
         if _HAS_LGPIO:
             self._h = _lgpio.gpiochip_open(0)
@@ -79,10 +79,13 @@ class Button:
     def start(self) -> None:
         self._running = True
         if _HAS_LGPIO:
-            self._cb = _lgpio.callback(
-                self._h, self._pin, _lgpio.BOTH_EDGES,
-                self._lgpio_edge_handler,
+            # Use a polling thread rather than lgpio.callback — edge-triggered
+            # interrupts are unreliable on Pi 5 / kernel 6.x, while polling
+            # (the same technique used by the hardware test) works correctly.
+            self._poll_thread = threading.Thread(
+                target=self._lgpio_poll_loop, daemon=True
             )
+            self._poll_thread.start()
         elif _HAS_RPIGPIO:
             _RPIGPIO.add_event_detect(
                 self._pin, _RPIGPIO.BOTH,
@@ -96,9 +99,9 @@ class Button:
         self._running = False
         self._cancel_held_timer()
         if _HAS_LGPIO:
-            if self._cb is not None:
-                _lgpio.callback_cancel(self._cb)
-                self._cb = None
+            if self._poll_thread is not None:
+                self._poll_thread.join(timeout=0.5)
+                self._poll_thread = None
             _lgpio.gpiochip_close(self._h)
         elif _HAS_RPIGPIO:
             _RPIGPIO.remove_event_detect(self._pin)
@@ -107,17 +110,28 @@ class Button:
             self._stub.remove_edge()
 
     # ------------------------------------------------------------------
-    # Edge handlers
+    # lgpio polling loop (replaces unreliable edge callbacks on Pi 5)
     # ------------------------------------------------------------------
 
-    # lgpio callback: (chip, gpio, level, tick) — level is 0/1 directly
-    def _lgpio_edge_handler(self, chip: int, gpio: int, level: int, tick: int) -> None:
-        if not self._running:
-            return
-        if level == 0:
-            self._on_press_start()
-        elif level == 1:
-            self._on_press_end()
+    def _lgpio_poll_loop(self) -> None:
+        debounce_s = self._debounce_ms / 1000.0
+        last_level = _lgpio.gpio_read(self._h, self._pin)
+        while self._running:
+            level = _lgpio.gpio_read(self._h, self._pin)
+            if level != last_level:
+                time.sleep(debounce_s)          # wait for contact to settle
+                level = _lgpio.gpio_read(self._h, self._pin)
+                if level != last_level:         # still changed after debounce
+                    last_level = level
+                    if level == 0:
+                        self._on_press_start()
+                    else:
+                        self._on_press_end()
+            time.sleep(0.005)                   # 5 ms poll interval
+
+    # ------------------------------------------------------------------
+    # RPi.GPIO / stub edge handler
+    # ------------------------------------------------------------------
 
     # RPi.GPIO / stub callback: (channel,)
     def _rpigpio_edge_handler(self, channel: int) -> None:  # noqa: ARG002
