@@ -2,6 +2,7 @@
 import argparse
 import math
 import queue
+import signal
 import subprocess
 import threading
 import time
@@ -154,6 +155,11 @@ class _MenuController:
 # ---------------------------------------------------------------------------
 
 def run(args: argparse.Namespace) -> None:
+    def _on_sigterm(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _on_sigterm)
+
     power.init()
 
     lcd    = LCD(i2c_addr=args.lcd_addr)
