@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "porcupine"
@@ -13,6 +13,10 @@ dependencies = [
     "RPLCD>=1.3",
     "smbus2>=0.4",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["porcupine*"]
 
 [project.scripts]
 porcupine = "porcupine.main:main"
