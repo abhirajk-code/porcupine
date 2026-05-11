@@ -209,7 +209,7 @@ def run(args: argparse.Namespace) -> None:
 
     lcd.start(get_screens(), refresh_s=args.refresh)
     button.start()
-    _beep_async(count=2, duration_ms=150, gap_ms=100)
+    _beep_async(count=1, duration_ms=150)
 
     try:
         while True:
@@ -221,7 +221,7 @@ def run(args: argparse.Namespace) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        buzzer.beep(count=1, duration_ms=600)
+        buzzer.beep(count=1, duration_ms=150)
         _beep_q.put(None)  # signal worker to exit
         button.stop()
         lcd.stop()
