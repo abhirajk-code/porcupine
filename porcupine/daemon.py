@@ -209,6 +209,7 @@ def run(args: argparse.Namespace) -> None:
 
     lcd.start(get_screens(), refresh_s=args.refresh)
     button.start()
+    _beep_async(count=2, duration_ms=150, gap_ms=100)
 
     try:
         while True:
