@@ -221,6 +221,7 @@ def run(args: argparse.Namespace) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        buzzer.beep(count=1, duration_ms=600)
         _beep_q.put(None)  # signal worker to exit
         button.stop()
         lcd.stop()
