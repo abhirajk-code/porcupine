@@ -3,7 +3,6 @@ import argparse
 import math
 import subprocess
 import time
-from typing import Callable
 
 from .interfaces.button import Button, MenuFSM
 from .interfaces.buzzer import AlertChecker, Buzzer
@@ -172,29 +171,23 @@ def run(args: argparse.Namespace) -> None:
             daemon=True,
         ).start()
 
-    def _short_beep_then(fn: Callable) -> Callable:
-        """Wrap a callback so a single short beep fires before it."""
-        def _wrapper():
-            _beep_async(count=1, duration_ms=80)
-            fn()
-        return _wrapper
-
     def get_screens() -> list[tuple[str, str]]:
         return _build_screens(args, _read_all(args))
 
     menu = _MenuController(lcd, args, get_screens)
     fsm  = MenuFSM(
         button=button,
-        next_screen_cb=_short_beep_then(lcd.next_screen),
+        next_screen_cb=lcd.next_screen,
         enter_menu_cb=menu.enter,
-        menu_next_cb=_short_beep_then(menu.next_item),
+        menu_next_cb=menu.next_item,
         menu_confirm_cb=menu.confirm,
     )
     menu._reset_fn = fsm.reset
 
-    # Two quick beeps when the long-press threshold is crossed — tells the
-    # user the button has been held long enough and they can release.
-    button.on_held(lambda: _beep_async(count=2, duration_ms=100, gap_ms=60))
+    # Short beep on every press-down — immediate feedback that the press registered.
+    button.on_press_start(lambda: _beep_async(count=1, duration_ms=80))
+    # Long beep when held past the threshold — cues the user to release for long press.
+    button.on_held(lambda: _beep_async(count=1, duration_ms=400))
 
     lcd.start(get_screens(), refresh_s=args.refresh)
     button.start()

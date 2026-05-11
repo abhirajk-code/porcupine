@@ -25,10 +25,12 @@ class Button:
     Single GPIO button wired active-low (internal pull-up).
 
     Callbacks:
+      on_press_start — fires immediately on button-down (falling edge);
+                       use for instant audio feedback that the press registered
       on_short_press — fires on release after a short press (< long_press_ms)
       on_long_press  — fires on release after a long press  (≥ long_press_ms)
       on_held        — fires at the long_press_ms mark while the button is
-                       still held; use for an audio "release now" cue
+                       still held; use for a "held long enough, release now" cue
 
     Uses lgpio on Pi 5+ and falls back to RPi.GPIO on older Pi models.
     """
@@ -38,6 +40,7 @@ class Button:
         self._long_press_s = long_press_ms / 1000.0
         self._debounce_ms = debounce_ms
         self._press_time: float | None = None
+        self._press_start_cb: Callable | None = None
         self._short_cb: Callable | None = None
         self._long_cb: Callable | None = None
         self._held_cb: Callable | None = None
@@ -58,6 +61,10 @@ class Button:
             self._h = None
             self._stub = _StubGPIO(pin)
             self._read = self._stub.read
+
+    def on_press_start(self, callback: Callable) -> None:
+        """Fires immediately on button-down — before release classification."""
+        self._press_start_cb = callback
 
     def on_short_press(self, callback: Callable) -> None:
         self._short_cb = callback
@@ -127,6 +134,8 @@ class Button:
 
     def _on_press_start(self) -> None:
         self._press_time = time.monotonic()
+        if self._press_start_cb is not None:
+            self._press_start_cb()
         if self._held_cb is not None:
             self._held_timer = threading.Timer(self._long_press_s, self._fire_held)
             self._held_timer.start()
