@@ -205,7 +205,9 @@ ok "Virtual environment: $VENV_DIR"
 info "Installing Python package into venv..."
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip
 "$VENV_DIR/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
-"$VENV_DIR/bin/pip" install --quiet "$INSTALL_DIR"
+# --force-reinstall ensures the installed package matches the source tree
+# even when the version number hasn't changed (e.g. after a git pull).
+"$VENV_DIR/bin/pip" install --quiet --force-reinstall "$INSTALL_DIR"
 PORCUPINE_BIN="$VENV_DIR/bin/porcupine"
 [[ -f "$PORCUPINE_BIN" ]] || die "'porcupine' binary not found in venv after install"
 ok "Package installed → $PORCUPINE_BIN"
