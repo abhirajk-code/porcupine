@@ -22,50 +22,54 @@ _HAS_GPIO = _HAS_LGPIO or _HAS_RPIGPIO
 
 class Buzzer:
     """
-    Buzzer driver supporting both active (DC) and passive (PWM) buzzers.
+    Buzzer driver supporting passive (PWM) and active (DC) buzzers.
 
-    Passive buzzers require a PWM tone to vibrate — plain DC only produces
-    a faint click. Set frequency_hz to the buzzer's resonant frequency
-    (2000 Hz is a safe default for most passive buzzers).  Set
-    frequency_hz=0 only for active buzzers that have an internal oscillator.
+    Key parameters for passive buzzers (inspired by working MicroPython code):
+    - frequency_hz=1047: resonant frequency of most cheap piezo buzzers
+    - duty_pct=3.0:      short spike waveform — low duty cycle sounds louder
+                         than 50% on passive buzzers (less damping per cycle)
+    Set frequency_hz=0 for active buzzers that have an internal oscillator.
 
-    All beep sequences are serialized through a lock so overlapping
-    alert callbacks never produce interleaved buzzes.
-
-    Uses lgpio on Pi 5+ and falls back to RPi.GPIO on older Pi models.
+    Uses lgpio.tx_pwm on Pi 5+ and RPi.GPIO.PWM on older Pi models.
+    Both produce a hardware/software PWM signal at the configured frequency
+    and duty cycle for the duration of each beep.
     """
 
-    def __init__(self, pin: int, active_high: bool = True, frequency_hz: int = 2000):
+    def __init__(
+        self,
+        pin: int,
+        active_high: bool = True,
+        frequency_hz: int = 1047,
+        duty_pct: float = 3.0,
+    ):
         self._pin = pin
         self._active_high = active_high
         self._frequency_hz = frequency_hz
+        self._duty_pct = duty_pct
         self._lock = threading.Lock()
 
         if _HAS_LGPIO:
             self._h = _lgpio.gpiochip_open(0)
             _lgpio.gpio_claim_output(self._h, pin, 0)  # initial low
-            self._set = self._lgpio_set
         elif _HAS_RPIGPIO:
             self._h = None
             _RPIGPIO.setmode(_RPIGPIO.BCM)
             _RPIGPIO.setup(pin, _RPIGPIO.OUT, initial=_RPIGPIO.LOW)
-            self._pwm = _RPIGPIO.PWM(pin, max(frequency_hz, 1)) if frequency_hz > 0 else None
-            self._set = self._rpigpio_set
+            self._pwm = (
+                _RPIGPIO.PWM(pin, max(frequency_hz, 1)) if frequency_hz > 0 else None
+            )
         else:
             self._h = None
             self._stub = _StubPin()
-            self._set = self._stub.set
 
     def beep(self, count: int = 1, duration_ms: int = 200, gap_ms: int = 100) -> None:
         with self._lock:
             for i in range(count):
-                self._set(True)
-                time.sleep(duration_ms / 1000.0)
-                self._set(False)
+                self._play_tone(duration_ms / 1000.0)
                 if gap_ms > 0 and i < count - 1:
                     time.sleep(gap_ms / 1000.0)
 
-    # Named alert patterns (from PLAN.md)
+    # Named alert patterns
     def alert_temp(self) -> None:
         """3 short beeps — CPU temperature critical."""
         self.beep(count=3, duration_ms=200, gap_ms=100)
@@ -84,33 +88,50 @@ class Buzzer:
 
     def cleanup(self) -> None:
         if _HAS_LGPIO:
-            _lgpio.tx_pwm(self._h, self._pin, 0, 0)  # stop any running PWM
+            _lgpio.tx_pwm(self._h, self._pin, 0, 0)
             _lgpio.gpiochip_close(self._h)
         elif _HAS_RPIGPIO:
             if self._pwm is not None:
                 self._pwm.stop()
             _RPIGPIO.cleanup(self._pin)
 
-    def _lgpio_set(self, on: bool) -> None:
-        if self._frequency_hz > 0:
-            # PWM tone — works for both passive and active buzzers.
-            # lgpio.tx_pwm(h, gpio, freq_hz, duty_pct); freq=0 stops it.
-            _lgpio.tx_pwm(self._h, self._pin,
-                          self._frequency_hz if on else 0,
-                          50 if on else 0)
-        else:
-            level = 1 if (on == self._active_high) else 0
-            _lgpio.gpio_write(self._h, self._pin, level)
+    # ------------------------------------------------------------------
+    # Core tone generator
+    # ------------------------------------------------------------------
 
-    def _rpigpio_set(self, on: bool) -> None:
-        if self._pwm is not None:
-            if on:
-                self._pwm.start(50)  # 50 % duty cycle
-            else:
-                self._pwm.stop()
+    def _play_tone(self, duration_s: float) -> None:
+        if _HAS_LGPIO:
+            self._lgpio_tone(duration_s)
+        elif _HAS_RPIGPIO:
+            self._rpigpio_tone(duration_s)
         else:
-            level = _RPIGPIO.HIGH if (on == self._active_high) else _RPIGPIO.LOW
+            self._stub.set(True)
+            time.sleep(duration_s)
+            self._stub.set(False)
+
+    def _lgpio_tone(self, duration_s: float) -> None:
+        if self._frequency_hz <= 0:
+            _lgpio.gpio_write(self._h, self._pin, 1 if self._active_high else 0)
+            time.sleep(duration_s)
+            _lgpio.gpio_write(self._h, self._pin, 0)
+            return
+        # Low duty cycle (~3%) at ~1047 Hz matches the working pattern from
+        # the MicroPython doorLock code (duty_u16=2000/65535 ≈ 3%, freq=1047).
+        _lgpio.tx_pwm(self._h, self._pin, self._frequency_hz, self._duty_pct)
+        time.sleep(duration_s)
+        _lgpio.tx_pwm(self._h, self._pin, 0, 0)
+
+    def _rpigpio_tone(self, duration_s: float) -> None:
+        if self._pwm is not None:
+            self._pwm.start(self._duty_pct)
+            time.sleep(duration_s)
+            self._pwm.stop()
+        else:
+            level = _RPIGPIO.HIGH if self._active_high else _RPIGPIO.LOW
             _RPIGPIO.output(self._pin, level)
+            time.sleep(duration_s)
+            _RPIGPIO.output(self._pin,
+                            _RPIGPIO.LOW if self._active_high else _RPIGPIO.HIGH)
 
 
 # ---------------------------------------------------------------------------
@@ -156,10 +177,6 @@ class AlertChecker:
         self._check_mem(data)
         self._check_net(data)
 
-    # ------------------------------------------------------------------
-    # Internal checkers
-    # ------------------------------------------------------------------
-
     def _check_temp(self, data: dict) -> None:
         temp = data.get("cpu_temp_c")
         if temp is None or (isinstance(temp, float) and math.isnan(temp)):
@@ -193,7 +210,6 @@ class AlertChecker:
             self._alerted.discard(self._MEM)
 
     def _check_net(self, data: dict) -> None:
-        # network.read() falls back to "lo" when no active interface is found
         iface = data.get("interface")
         if iface is None:
             return

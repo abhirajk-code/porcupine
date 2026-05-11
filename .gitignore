@@ -7,3 +7,5 @@ build/
 *.log
 /var/
 .env
+doorLock.py
+porcupine_sysinfo.txt
