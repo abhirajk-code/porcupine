@@ -1,5 +1,4 @@
-psutil>=5.9
-RPi.GPIO>=0.7
+# Runtime dependencies not available via apt on Raspbian Trixie.
+# psutil, RPi.GPIO, smbus2, and lgpio are all in apt and are inherited
+# by the venv via --system-site-packages.
 RPLCD>=1.3
-smbus2>=0.4
-pytest>=8.0

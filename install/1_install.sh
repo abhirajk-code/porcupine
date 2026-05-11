@@ -190,7 +190,13 @@ write_config
 echo
 if [[ ! -d "$VENV_DIR" ]]; then
     info "Creating virtual environment at $VENV_DIR..."
-    "$PY" -m venv "$VENV_DIR"
+    # --system-site-packages lets the venv inherit apt-installed packages
+    # (RPi.GPIO, psutil, smbus2, lgpio) without re-downloading them.
+    "$PY" -m venv --system-site-packages "$VENV_DIR"
+elif ! grep -q "^include-system-site-packages = true" "$VENV_DIR/pyvenv.cfg" 2>/dev/null; then
+    info "Existing venv lacks --system-site-packages; recreating..."
+    rm -rf "$VENV_DIR"
+    "$PY" -m venv --system-site-packages "$VENV_DIR"
 else
     info "Reusing existing virtual environment at $VENV_DIR"
 fi
