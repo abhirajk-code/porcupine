@@ -114,20 +114,27 @@ class Button:
     # ------------------------------------------------------------------
 
     def _lgpio_poll_loop(self) -> None:
+        import sys
+        print(f"[button] poll started pin={self._pin}", flush=True, file=sys.stderr)
         debounce_s = self._debounce_ms / 1000.0
-        last_level = _lgpio.gpio_read(self._h, self._pin)
-        while self._running:
-            level = _lgpio.gpio_read(self._h, self._pin)
-            if level != last_level:
-                time.sleep(debounce_s)          # wait for contact to settle
+        try:
+            last_level = _lgpio.gpio_read(self._h, self._pin)
+            while self._running:
                 level = _lgpio.gpio_read(self._h, self._pin)
-                if level != last_level:         # still changed after debounce
-                    last_level = level
-                    if level == 0:
-                        self._on_press_start()
-                    else:
-                        self._on_press_end()
-            time.sleep(0.005)                   # 5 ms poll interval
+                if level != last_level:
+                    time.sleep(debounce_s)
+                    level = _lgpio.gpio_read(self._h, self._pin)
+                    if level != last_level:
+                        last_level = level
+                        print(f"[button] pin {self._pin} level={level}",
+                              flush=True, file=sys.stderr)
+                        if level == 0:
+                            self._on_press_start()
+                        else:
+                            self._on_press_end()
+                time.sleep(0.005)
+        except Exception as exc:
+            print(f"[button] poll error: {exc}", flush=True, file=sys.stderr)
 
     # ------------------------------------------------------------------
     # RPi.GPIO / stub edge handler
