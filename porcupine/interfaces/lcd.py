@@ -61,6 +61,8 @@ class LCD:
         if self._thread:
             self._thread.join(timeout=2)
         self.clear()
+        with self._lock:
+            self._lcd.backlight_enabled = False
 
     def next_screen(self) -> None:
         """Advance to the next screen (called from button short-press)."""
@@ -136,6 +138,14 @@ class _StubLCD:
     def clear(self) -> None:
         self._lines = [""] * self.rows
         self.cursor_pos = (0, 0)
+
+    @property
+    def backlight_enabled(self) -> bool:
+        return True
+
+    @backlight_enabled.setter
+    def backlight_enabled(self, value: bool) -> None:
+        pass
 
     def write_string(self, text: str) -> None:
         row, col = self.cursor_pos
