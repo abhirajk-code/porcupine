@@ -22,7 +22,12 @@ _HAS_GPIO = _HAS_LGPIO or _HAS_RPIGPIO
 
 class Buzzer:
     """
-    Active-buzzer driver (GPIO HIGH/LOW).
+    Buzzer driver supporting both active (DC) and passive (PWM) buzzers.
+
+    Passive buzzers require a PWM tone to vibrate — plain DC only produces
+    a faint click. Set frequency_hz to the buzzer's resonant frequency
+    (2000 Hz is a safe default for most passive buzzers).  Set
+    frequency_hz=0 only for active buzzers that have an internal oscillator.
 
     All beep sequences are serialized through a lock so overlapping
     alert callbacks never produce interleaved buzzes.
@@ -30,9 +35,10 @@ class Buzzer:
     Uses lgpio on Pi 5+ and falls back to RPi.GPIO on older Pi models.
     """
 
-    def __init__(self, pin: int, active_high: bool = True):
+    def __init__(self, pin: int, active_high: bool = True, frequency_hz: int = 2000):
         self._pin = pin
         self._active_high = active_high
+        self._frequency_hz = frequency_hz
         self._lock = threading.Lock()
 
         if _HAS_LGPIO:
@@ -43,6 +49,7 @@ class Buzzer:
             self._h = None
             _RPIGPIO.setmode(_RPIGPIO.BCM)
             _RPIGPIO.setup(pin, _RPIGPIO.OUT, initial=_RPIGPIO.LOW)
+            self._pwm = _RPIGPIO.PWM(pin, max(frequency_hz, 1)) if frequency_hz > 0 else None
             self._set = self._rpigpio_set
         else:
             self._h = None
@@ -77,17 +84,33 @@ class Buzzer:
 
     def cleanup(self) -> None:
         if _HAS_LGPIO:
+            _lgpio.tx_pwm(self._h, self._pin, 0, 0)  # stop any running PWM
             _lgpio.gpiochip_close(self._h)
         elif _HAS_RPIGPIO:
+            if self._pwm is not None:
+                self._pwm.stop()
             _RPIGPIO.cleanup(self._pin)
 
     def _lgpio_set(self, on: bool) -> None:
-        level = 1 if (on == self._active_high) else 0
-        _lgpio.gpio_write(self._h, self._pin, level)
+        if self._frequency_hz > 0:
+            # PWM tone — works for both passive and active buzzers.
+            # lgpio.tx_pwm(h, gpio, freq_hz, duty_pct); freq=0 stops it.
+            _lgpio.tx_pwm(self._h, self._pin,
+                          self._frequency_hz if on else 0,
+                          50 if on else 0)
+        else:
+            level = 1 if (on == self._active_high) else 0
+            _lgpio.gpio_write(self._h, self._pin, level)
 
     def _rpigpio_set(self, on: bool) -> None:
-        level = _RPIGPIO.HIGH if (on == self._active_high) else _RPIGPIO.LOW
-        _RPIGPIO.output(self._pin, level)
+        if self._pwm is not None:
+            if on:
+                self._pwm.start(50)  # 50 % duty cycle
+            else:
+                self._pwm.stop()
+        else:
+            level = _RPIGPIO.HIGH if (on == self._active_high) else _RPIGPIO.LOW
+            _RPIGPIO.output(self._pin, level)
 
 
 # ---------------------------------------------------------------------------
