@@ -1,4 +1,5 @@
 """GPIO button input handler with short/long press detection and menu FSM."""
+import threading
 import time
 from enum import Enum, auto
 from typing import Callable
@@ -23,8 +24,11 @@ class Button:
     """
     Single GPIO button wired active-low (internal pull-up).
 
-    Fires on_short_press when released before long_press_ms,
-    fires on_long_press when released after long_press_ms.
+    Callbacks:
+      on_short_press — fires on release after a short press (< long_press_ms)
+      on_long_press  — fires on release after a long press  (≥ long_press_ms)
+      on_held        — fires at the long_press_ms mark while the button is
+                       still held; use for an audio "release now" cue
 
     Uses lgpio on Pi 5+ and falls back to RPi.GPIO on older Pi models.
     """
@@ -36,6 +40,8 @@ class Button:
         self._press_time: float | None = None
         self._short_cb: Callable | None = None
         self._long_cb: Callable | None = None
+        self._held_cb: Callable | None = None
+        self._held_timer: threading.Timer | None = None
         self._running = False
         self._cb = None  # lgpio callback handle
 
@@ -59,6 +65,10 @@ class Button:
     def on_long_press(self, callback: Callable) -> None:
         self._long_cb = callback
 
+    def on_held(self, callback: Callable) -> None:
+        """Fires once at the long-press threshold while the button is still held."""
+        self._held_cb = callback
+
     def start(self) -> None:
         self._running = True
         if _HAS_LGPIO:
@@ -77,6 +87,7 @@ class Button:
 
     def stop(self) -> None:
         self._running = False
+        self._cancel_held_timer()
         if _HAS_LGPIO:
             if self._cb is not None:
                 _lgpio.callback_cancel(self._cb)
@@ -88,25 +99,40 @@ class Button:
         else:
             self._stub.remove_edge()
 
+    # ------------------------------------------------------------------
+    # Edge handlers
+    # ------------------------------------------------------------------
+
     # lgpio callback: (chip, gpio, level, tick) — level is 0/1 directly
     def _lgpio_edge_handler(self, chip: int, gpio: int, level: int, tick: int) -> None:
         if not self._running:
             return
-        if level == 0:       # falling → pressed (active-low)
-            self._press_time = time.monotonic()
-        elif level == 1:     # rising → released
-            self._fire_if_valid()
+        if level == 0:
+            self._on_press_start()
+        elif level == 1:
+            self._on_press_end()
 
     # RPi.GPIO / stub callback: (channel,)
     def _rpigpio_edge_handler(self, channel: int) -> None:  # noqa: ARG002
         if not self._running:
             return
-        if self._read() == 0:   # falling → pressed
-            self._press_time = time.monotonic()
-        else:                    # rising → released
-            self._fire_if_valid()
+        if self._read() == 0:
+            self._on_press_start()
+        else:
+            self._on_press_end()
 
-    def _fire_if_valid(self) -> None:
+    # ------------------------------------------------------------------
+    # Press lifecycle
+    # ------------------------------------------------------------------
+
+    def _on_press_start(self) -> None:
+        self._press_time = time.monotonic()
+        if self._held_cb is not None:
+            self._held_timer = threading.Timer(self._long_press_s, self._fire_held)
+            self._held_timer.start()
+
+    def _on_press_end(self) -> None:
+        self._cancel_held_timer()
         if self._press_time is None:
             return
         duration = time.monotonic() - self._press_time
@@ -117,6 +143,16 @@ class Button:
         else:
             if self._short_cb:
                 self._short_cb()
+
+    def _fire_held(self) -> None:
+        """Timer callback — button still held at long_press threshold."""
+        if self._held_cb:
+            self._held_cb()
+
+    def _cancel_held_timer(self) -> None:
+        if self._held_timer is not None:
+            self._held_timer.cancel()
+            self._held_timer = None
 
 
 # ---------------------------------------------------------------------------
