@@ -88,7 +88,7 @@ class Buzzer:
 
     def cleanup(self) -> None:
         if _HAS_LGPIO:
-            _lgpio.tx_pwm(self._h, self._pin, 0, 0)
+            self._lgpio_stop()
             _lgpio.gpiochip_close(self._h)
         elif _HAS_RPIGPIO:
             if self._pwm is not None:
@@ -119,7 +119,18 @@ class Buzzer:
         # the MicroPython doorLock code (duty_u16=2000/65535 ≈ 3%, freq=1047).
         _lgpio.tx_pwm(self._h, self._pin, self._frequency_hz, self._duty_pct)
         time.sleep(duration_s)
-        _lgpio.tx_pwm(self._h, self._pin, 0, 0)
+        self._lgpio_stop()
+
+    def _lgpio_stop(self) -> None:
+        """Stop lgpio PWM without passing freq=0 (which raises 'bad PWM micros')."""
+        if self._frequency_hz > 0:
+            # duty=0 silences the pin while keeping a valid frequency.
+            # Harmless if no PWM is currently running.
+            try:
+                _lgpio.tx_pwm(self._h, self._pin, self._frequency_hz, 0)
+            except Exception:
+                pass
+        _lgpio.gpio_write(self._h, self._pin, 0)
 
     def _rpigpio_tone(self, duration_s: float) -> None:
         if self._pwm is not None:
