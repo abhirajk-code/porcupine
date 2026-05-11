@@ -37,12 +37,13 @@ done
 if $UNINSTALL; then
     SERVICE_NAME="porcupine"
     SERVICE_DEST="/etc/systemd/system/${SERVICE_NAME}.service"
+    VENV_DIR="/opt/porcupine/venv"
     echo "Stopping and disabling service..."
     systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
     rm -f "$SERVICE_DEST"
     systemctl daemon-reload
-    echo "Removing Python package..."
-    python3 -m pip uninstall -y porcupine 2>/dev/null || true
+    echo "Removing virtual environment..."
+    rm -rf "$VENV_DIR"
     echo "[ OK ]  Porcupine uninstalled."
     echo "        Config/data dirs preserved — remove manually if no longer needed."
     exit 0

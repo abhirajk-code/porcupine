@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICE_NAME="porcupine"
 SERVICE_DEST="/etc/systemd/system/${SERVICE_NAME}.service"
 CONFIG_FILE="/etc/porcupine/porcupine.conf"
+VENV_DIR="/opt/porcupine/venv"
 
 ok()  { echo "[ OK ]  $*"; }
 die() { echo "[FAIL]  $*" >&2; exit 1; }
@@ -30,8 +31,8 @@ die() { echo "[FAIL]  $*" >&2; exit 1; }
 [[ -f "$CONFIG_FILE" ]] \
     || die "Config file not found: $CONFIG_FILE — run Step 1 first: sudo bash $SCRIPT_DIR/1_install.sh"
 
-porcupine --help &>/dev/null \
-    || die "'porcupine' binary not found — run Step 1 first: sudo bash $SCRIPT_DIR/1_install.sh"
+"$VENV_DIR/bin/porcupine" --help &>/dev/null 2>&1 \
+    || die "porcupine not found in venv ($VENV_DIR) — run Step 1 first: sudo bash $SCRIPT_DIR/1_install.sh"
 
 # ---------------------------------------------------------------------------
 # Enable and start

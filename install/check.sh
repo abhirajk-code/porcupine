@@ -6,28 +6,38 @@
 set -uo pipefail
 
 I2C_ADDR="${1:-0x27}"
+VENV_DIR="/opt/porcupine/venv"
+VENV_PY="$VENV_DIR/bin/python"
+VENV_BIN="$VENV_DIR/bin/porcupine"
 PASS=0
 WARN=0
 
-ok()   { echo "[ OK ]  $*"; ((PASS++)); }
-warn() { echo "[WARN]  $*"; ((WARN++)); }
+ok()   { echo "[ OK ]  $*"; PASS=$((PASS + 1)); }
+warn() { echo "[WARN]  $*"; WARN=$((WARN + 1)); }
 fail() { echo "[FAIL]  $*"; }
 
 echo "=== Porcupine post-install check ==="
 echo
 
-# 1. Package importable
-if python3 -c "import porcupine" 2>/dev/null; then
-    ok "porcupine package imports cleanly"
+# 1. Virtual environment
+if [[ -d "$VENV_DIR" ]]; then
+    ok "Virtual environment present: $VENV_DIR"
 else
-    fail "porcupine package not importable — run setup.sh first"
+    fail "Virtual environment missing: $VENV_DIR — run Step 1 first"
 fi
 
-# 2. CLI entry point
-if porcupine --help &>/dev/null; then
+# 2. Package importable via venv Python
+if [[ -f "$VENV_PY" ]] && "$VENV_PY" -c "import porcupine" 2>/dev/null; then
+    ok "porcupine package imports cleanly"
+else
+    fail "porcupine not importable from venv — run Step 1 first"
+fi
+
+# 3. CLI entry point
+if [[ -f "$VENV_BIN" ]] && "$VENV_BIN" --help &>/dev/null; then
     ok "porcupine CLI entry point works"
 else
-    fail "'porcupine --help' failed — check installation"
+    fail "porcupine CLI not found in venv — run Step 1 first"
 fi
 
 # 3. Config file

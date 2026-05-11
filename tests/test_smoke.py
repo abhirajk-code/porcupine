@@ -214,6 +214,14 @@ def test_setup_script_orchestrates_three_steps():
     assert "3_enable.sh" in text
 
 
+def test_step1_uses_venv():
+    step1 = Path(__file__).parent.parent / "install" / "1_install.sh"
+    text = step1.read_text()
+    assert "VENV_DIR" in text
+    assert "venv" in text
+    assert "/opt/porcupine/venv" in text
+
+
 def test_step1_has_prompt_functions():
     step1 = Path(__file__).parent.parent / "install" / "1_install.sh"
     text = step1.read_text()

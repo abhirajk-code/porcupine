@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_DIR="/etc/porcupine"
 DATA_DIR="/var/lib/porcupine"
+VENV_DIR="/opt/porcupine/venv"
 SERVICE_NAME="porcupine"
 SERVICE_DEST="/etc/systemd/system/${SERVICE_NAME}.service"
 CONFIG_FILE="$CONFIG_DIR/porcupine.conf"
@@ -183,14 +184,24 @@ ok "Directories: $CONFIG_DIR, $DATA_DIR"
 write_config
 
 # ---------------------------------------------------------------------------
-# Install Python package
+# Create virtual environment and install package
+# (avoids the PEP 668 "externally-managed-environment" error on Pi OS 12+)
 # ---------------------------------------------------------------------------
 echo
-info "Installing Python package..."
-"$PY" -m pip install --quiet -r "$INSTALL_DIR/requirements.txt"
-"$PY" -m pip install --quiet "$INSTALL_DIR"
-PORCUPINE_BIN="$(command -v porcupine 2>/dev/null)" \
-    || die "'porcupine' binary not found in PATH after install"
+if [[ ! -d "$VENV_DIR" ]]; then
+    info "Creating virtual environment at $VENV_DIR..."
+    "$PY" -m venv "$VENV_DIR"
+else
+    info "Reusing existing virtual environment at $VENV_DIR"
+fi
+ok "Virtual environment: $VENV_DIR"
+
+info "Installing Python package into venv..."
+"$VENV_DIR/bin/pip" install --quiet --upgrade pip
+"$VENV_DIR/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
+"$VENV_DIR/bin/pip" install --quiet "$INSTALL_DIR"
+PORCUPINE_BIN="$VENV_DIR/bin/porcupine"
+[[ -f "$PORCUPINE_BIN" ]] || die "'porcupine' binary not found in venv after install"
 ok "Package installed → $PORCUPINE_BIN"
 
 # ---------------------------------------------------------------------------

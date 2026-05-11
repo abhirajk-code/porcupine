@@ -11,7 +11,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEST_PY="$SCRIPT_DIR/test_hardware.py"
 CONFIG_FILE="/etc/porcupine/porcupine.conf"
-PY="$(command -v python3)"
+VENV_DIR="/opt/porcupine/venv"
+
+# Prefer the venv Python (has porcupine installed); fall back to system python3
+if [[ -f "$VENV_DIR/bin/python" ]]; then
+    PY="$VENV_DIR/bin/python"
+else
+    PY="$(command -v python3)"
+fi
 
 PASS=0; FAIL=0; SKIP=0
 
@@ -83,8 +90,8 @@ echo
 [[ "${EUID:-$(id -u)}" -eq 0 ]] \
     || echo "  NOTE: Not running as root — GPIO tests may fail if user lacks gpio group access."
 
-porcupine --help &>/dev/null \
-    || { echo "[FAIL]  porcupine not installed — run Step 1 first."; exit 1; }
+"$VENV_DIR/bin/porcupine" --help &>/dev/null 2>&1 \
+    || { echo "[FAIL]  porcupine not found in venv — run Step 1 first."; exit 1; }
 
 # ════════════════════════════════════════════════════════
 sep "1 / 6 — LCD display"
