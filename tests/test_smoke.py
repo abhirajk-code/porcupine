@@ -85,7 +85,7 @@ def test_parse_args_defaults_without_config(tmp_path):
     args = parse_args([], config_path=str(tmp_path / "none.conf"))
     assert all(getattr(args, f) for f in ("power", "cpu", "temp", "net"))
     assert args.lcd_addr   == 0x27
-    assert args.button_pin == 17
+    assert args.button_pin == 4
     assert args.buzzer_pin == 18
     assert args.refresh    == pytest.approx(3.0)
 

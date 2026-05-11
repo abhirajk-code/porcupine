@@ -101,7 +101,7 @@ configure_interactive() {
     echo "========================================"
 
     local d_lcd;    d_lcd="$(_cfg_get    hardware lcd_addr   0x27)"
-    local d_btn;    d_btn="$(_cfg_get    hardware button_pin 17)"
+    local d_btn;    d_btn="$(_cfg_get    hardware button_pin 4)"
     local d_buz;    d_buz="$(_cfg_get    hardware buzzer_pin 18)"
     local d_ref;    d_ref="$(_cfg_get    display  refresh    3)"
     local d_power;  d_power="$(_cfg_get  monitors power      true)"
@@ -133,7 +133,7 @@ configure_interactive() {
 }
 
 configure_noninteractive() {
-    LCD_ADDR="0x27"; BUTTON_PIN="17"; BUZZER_PIN="18"; REFRESH="3"
+    LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; REFRESH="3"
     ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"; ENABLE_NET="true"
     TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"
     info "Non-interactive — using all defaults"

@@ -160,7 +160,7 @@ def test_parse_args_defaults_all_monitors_enabled(tmp_path):
 def test_parse_args_defaults_numeric_values(tmp_path):
     args = parse_args([], config_path=str(tmp_path / "none.conf"))
     assert args.lcd_addr   == 0x27
-    assert args.button_pin == 17
+    assert args.button_pin == 4
     assert args.buzzer_pin == 18
     assert args.refresh    == pytest.approx(3.0)
     assert args.temp_warn  == pytest.approx(80.0)

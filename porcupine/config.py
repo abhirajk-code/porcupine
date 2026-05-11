@@ -80,7 +80,7 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
     )
     parser.add_argument(
         "--button-pin", type=int,
-        default=file_cfg.get("button_pin", 17),
+        default=file_cfg.get("button_pin", 4),
         metavar="PIN",
     )
     parser.add_argument(
