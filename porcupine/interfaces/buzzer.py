@@ -5,10 +5,19 @@ import time
 from typing import Callable
 
 try:
-    import RPi.GPIO as GPIO
-    _HAS_GPIO = True
+    import lgpio as _lgpio
+    _HAS_LGPIO = True
+except ImportError:
+    _HAS_LGPIO = False
+
+try:
+    import RPi.GPIO as _RPIGPIO
+    _HAS_RPIGPIO = True
 except (ImportError, RuntimeError):
-    _HAS_GPIO = False
+    _HAS_RPIGPIO = False
+
+# True when any GPIO backend is available
+_HAS_GPIO = _HAS_LGPIO or _HAS_RPIGPIO
 
 
 class Buzzer:
@@ -17,6 +26,8 @@ class Buzzer:
 
     All beep sequences are serialized through a lock so overlapping
     alert callbacks never produce interleaved buzzes.
+
+    Uses lgpio on Pi 5+ and falls back to RPi.GPIO on older Pi models.
     """
 
     def __init__(self, pin: int, active_high: bool = True):
@@ -24,11 +35,17 @@ class Buzzer:
         self._active_high = active_high
         self._lock = threading.Lock()
 
-        if _HAS_GPIO:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
-            self._set = self._gpio_set
+        if _HAS_LGPIO:
+            self._h = _lgpio.gpiochip_open(0)
+            _lgpio.gpio_claim_output(self._h, pin, 0)  # initial low
+            self._set = self._lgpio_set
+        elif _HAS_RPIGPIO:
+            self._h = None
+            _RPIGPIO.setmode(_RPIGPIO.BCM)
+            _RPIGPIO.setup(pin, _RPIGPIO.OUT, initial=_RPIGPIO.LOW)
+            self._set = self._rpigpio_set
         else:
+            self._h = None
             self._stub = _StubPin()
             self._set = self._stub.set
 
@@ -59,12 +76,18 @@ class Buzzer:
         self.beep(count=1, duration_ms=200, gap_ms=0)
 
     def cleanup(self) -> None:
-        if _HAS_GPIO:
-            GPIO.cleanup(self._pin)
+        if _HAS_LGPIO:
+            _lgpio.gpiochip_close(self._h)
+        elif _HAS_RPIGPIO:
+            _RPIGPIO.cleanup(self._pin)
 
-    def _gpio_set(self, on: bool) -> None:
-        level = GPIO.HIGH if (on == self._active_high) else GPIO.LOW
-        GPIO.output(self._pin, level)
+    def _lgpio_set(self, on: bool) -> None:
+        level = 1 if (on == self._active_high) else 0
+        _lgpio.gpio_write(self._h, self._pin, level)
+
+    def _rpigpio_set(self, on: bool) -> None:
+        level = _RPIGPIO.HIGH if (on == self._active_high) else _RPIGPIO.LOW
+        _RPIGPIO.output(self._pin, level)
 
 
 # ---------------------------------------------------------------------------

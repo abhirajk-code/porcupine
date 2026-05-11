@@ -4,10 +4,19 @@ from enum import Enum, auto
 from typing import Callable
 
 try:
-    import RPi.GPIO as GPIO
-    _HAS_GPIO = True
+    import lgpio as _lgpio
+    _HAS_LGPIO = True
+except ImportError:
+    _HAS_LGPIO = False
+
+try:
+    import RPi.GPIO as _RPIGPIO
+    _HAS_RPIGPIO = True
 except (ImportError, RuntimeError):
-    _HAS_GPIO = False
+    _HAS_RPIGPIO = False
+
+# True when any GPIO backend is available
+_HAS_GPIO = _HAS_LGPIO or _HAS_RPIGPIO
 
 
 class Button:
@@ -16,6 +25,8 @@ class Button:
 
     Fires on_short_press when released before long_press_ms,
     fires on_long_press when released after long_press_ms.
+
+    Uses lgpio on Pi 5+ and falls back to RPi.GPIO on older Pi models.
     """
 
     def __init__(self, pin: int, long_press_ms: int = 2000, debounce_ms: int = 50):
@@ -26,12 +37,19 @@ class Button:
         self._short_cb: Callable | None = None
         self._long_cb: Callable | None = None
         self._running = False
+        self._cb = None  # lgpio callback handle
 
-        if _HAS_GPIO:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            self._read = lambda: GPIO.input(pin)
+        if _HAS_LGPIO:
+            self._h = _lgpio.gpiochip_open(0)
+            _lgpio.gpio_claim_input(self._h, pin, _lgpio.SET_PULL_UP)
+            self._read = lambda: _lgpio.gpio_read(self._h, pin)
+        elif _HAS_RPIGPIO:
+            self._h = None
+            _RPIGPIO.setmode(_RPIGPIO.BCM)
+            _RPIGPIO.setup(pin, _RPIGPIO.IN, pull_up_down=_RPIGPIO.PUD_UP)
+            self._read = lambda: _RPIGPIO.input(pin)
         else:
+            self._h = None
             self._stub = _StubGPIO(pin)
             self._read = self._stub.read
 
@@ -43,39 +61,62 @@ class Button:
 
     def start(self) -> None:
         self._running = True
-        if _HAS_GPIO:
-            GPIO.add_event_detect(
-                self._pin, GPIO.BOTH,
-                callback=self._edge_handler,
+        if _HAS_LGPIO:
+            self._cb = _lgpio.callback(
+                self._h, self._pin, _lgpio.BOTH_EDGES,
+                self._lgpio_edge_handler,
+            )
+        elif _HAS_RPIGPIO:
+            _RPIGPIO.add_event_detect(
+                self._pin, _RPIGPIO.BOTH,
+                callback=self._rpigpio_edge_handler,
                 bouncetime=self._debounce_ms,
             )
         else:
-            self._stub.on_edge(self._edge_handler)
+            self._stub.on_edge(self._rpigpio_edge_handler)
 
     def stop(self) -> None:
         self._running = False
-        if _HAS_GPIO:
-            GPIO.remove_event_detect(self._pin)
-            GPIO.cleanup(self._pin)
+        if _HAS_LGPIO:
+            if self._cb is not None:
+                _lgpio.callback_cancel(self._cb)
+                self._cb = None
+            _lgpio.gpiochip_close(self._h)
+        elif _HAS_RPIGPIO:
+            _RPIGPIO.remove_event_detect(self._pin)
+            _RPIGPIO.cleanup(self._pin)
         else:
             self._stub.remove_edge()
 
-    def _edge_handler(self, channel: int) -> None:  # noqa: ARG002
+    # lgpio callback: (chip, gpio, level, tick) — level is 0/1 directly
+    def _lgpio_edge_handler(self, chip: int, gpio: int, level: int, tick: int) -> None:
         if not self._running:
             return
-        if self._read() == 0:  # falling edge → pressed
+        if level == 0:       # falling → pressed (active-low)
             self._press_time = time.monotonic()
-        else:                   # rising edge → released
-            if self._press_time is None:
-                return
-            duration = time.monotonic() - self._press_time
-            self._press_time = None
-            if duration >= self._long_press_s:
-                if self._long_cb:
-                    self._long_cb()
-            else:
-                if self._short_cb:
-                    self._short_cb()
+        elif level == 1:     # rising → released
+            self._fire_if_valid()
+
+    # RPi.GPIO / stub callback: (channel,)
+    def _rpigpio_edge_handler(self, channel: int) -> None:  # noqa: ARG002
+        if not self._running:
+            return
+        if self._read() == 0:   # falling → pressed
+            self._press_time = time.monotonic()
+        else:                    # rising → released
+            self._fire_if_valid()
+
+    def _fire_if_valid(self) -> None:
+        if self._press_time is None:
+            return
+        duration = time.monotonic() - self._press_time
+        self._press_time = None
+        if duration >= self._long_press_s:
+            if self._long_cb:
+                self._long_cb()
+        else:
+            if self._short_cb:
+                self._short_cb()
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +186,7 @@ class MenuFSM:
 # ---------------------------------------------------------------------------
 
 class _StubGPIO:
-    """In-process GPIO stand-in used when RPi.GPIO is not available."""
+    """In-process GPIO stand-in used when neither lgpio nor RPi.GPIO is available."""
 
     def __init__(self, pin: int):
         self._pin = pin

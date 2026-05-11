@@ -81,7 +81,7 @@ def cmd_lcd(cfg: dict) -> None:
 def cmd_buzzer(cfg: dict) -> None:
     from porcupine.interfaces.buzzer import Buzzer, _HAS_GPIO
     if not _HAS_GPIO:
-        print("Hardware not available: RPi.GPIO not installed.", file=sys.stderr)
+        print("Hardware not available: lgpio/RPi.GPIO not installed.", file=sys.stderr)
         sys.exit(2)
 
     bz = Buzzer(pin=cfg["buzzer_pin"])
@@ -107,15 +107,31 @@ def cmd_buzzer(cfg: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def cmd_button(cfg: dict, expected: str) -> None:
+    # Prefer lgpio (Pi 5+); fall back to RPi.GPIO (Pi 1–4).
     try:
-        import RPi.GPIO as GPIO
-    except (ImportError, RuntimeError):
-        print("Hardware not available: RPi.GPIO not installed.", file=sys.stderr)
-        sys.exit(2)
+        import lgpio
+        _chip = lgpio.gpiochip_open(0)
+        _use_lgpio = True
+    except (ImportError, Exception):
+        _use_lgpio = False
+        try:
+            import RPi.GPIO as GPIO
+        except (ImportError, RuntimeError):
+            print("Hardware not available: lgpio/RPi.GPIO not installed.",
+                  file=sys.stderr)
+            sys.exit(2)
 
     pin = cfg["button_pin"]
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+    if _use_lgpio:
+        lgpio.gpio_claim_input(_chip, pin, lgpio.SET_PULL_UP)
+        read_pin = lambda: lgpio.gpio_read(_chip, pin)
+        cleanup = lambda: lgpio.gpiochip_close(_chip)
+    else:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        read_pin = lambda: GPIO.input(pin)
+        cleanup = GPIO.cleanup
 
     try:
         if expected == "short":
@@ -129,7 +145,7 @@ def cmd_button(cfg: dict, expected: str) -> None:
         deadline = time.monotonic() + BUTTON_TIMEOUT_S
 
         # Wait for press (active low with internal pull-up)
-        while GPIO.input(pin) == 1:
+        while read_pin() == 1:
             if time.monotonic() > deadline:
                 print("  TIMEOUT — no press detected within "
                       f"{BUTTON_TIMEOUT_S} s.", file=sys.stderr)
@@ -140,7 +156,7 @@ def cmd_button(cfg: dict, expected: str) -> None:
         print("  Button pressed — waiting for release...", flush=True)
 
         # Wait for release
-        while GPIO.input(pin) == 0:
+        while read_pin() == 0:
             time.sleep(0.005)
 
         duration = time.monotonic() - press_time
@@ -155,7 +171,7 @@ def cmd_button(cfg: dict, expected: str) -> None:
             sys.exit(1)
 
     finally:
-        GPIO.cleanup()
+        cleanup()
 
 
 # ---------------------------------------------------------------------------
