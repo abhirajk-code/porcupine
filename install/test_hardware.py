@@ -121,17 +121,20 @@ def cmd_button(cfg: dict, expected: str) -> None:
                   file=sys.stderr)
             sys.exit(2)
 
+    from porcupine.interfaces.buzzer import Buzzer
+    bz = Buzzer(pin=cfg["buzzer_pin"])
+
     pin = cfg["button_pin"]
 
     if _use_lgpio:
         lgpio.gpio_claim_input(_chip, pin, lgpio.SET_PULL_UP)
         read_pin = lambda: lgpio.gpio_read(_chip, pin)
-        cleanup = lambda: lgpio.gpiochip_close(_chip)
+        cleanup = lambda: (lgpio.gpiochip_close(_chip), bz.cleanup())
     else:
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         read_pin = lambda: GPIO.input(pin)
-        cleanup = GPIO.cleanup
+        cleanup = lambda: (GPIO.cleanup(), bz.cleanup())
 
     try:
         if expected == "short":
@@ -154,9 +157,14 @@ def cmd_button(cfg: dict, expected: str) -> None:
 
         press_time = time.monotonic()
         print("  Button pressed — waiting for release...", flush=True)
+        bz.beep(count=1, duration_ms=150)  # short beep: press registered
 
-        # Wait for release
+        long_beeped = False
+        # Wait for release; play long beep when held past the threshold
         while read_pin() == 0:
+            if not long_beeped and time.monotonic() - press_time >= LONG_PRESS_S:
+                bz.beep(count=1, duration_ms=400)  # long beep: release now
+                long_beeped = True
             time.sleep(0.005)
 
         duration = time.monotonic() - press_time
