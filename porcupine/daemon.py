@@ -1,7 +1,9 @@
 """Main event loop — wires monitors to interfaces."""
 import argparse
 import math
+import queue
 import subprocess
+import threading
 import time
 
 from .interfaces.button import Button, MenuFSM
@@ -164,12 +166,22 @@ def run(args: argparse.Namespace) -> None:
         mem_warn=args.mem_warn,
     )
 
+    # Persistent worker thread — GPIO callbacks just enqueue; no thread-spawn
+    # overhead per beep (which caused the ~80 ms press-start beep to be missed).
+    _beep_q: queue.Queue = queue.Queue()
+
+    def _beep_worker() -> None:
+        while True:
+            item = _beep_q.get()
+            if item is None:
+                break
+            buzzer.beep(**item)
+
+    _beep_thread = threading.Thread(target=_beep_worker, daemon=True)
+    _beep_thread.start()
+
     def _beep_async(count: int, duration_ms: int, gap_ms: int = 0) -> None:
-        import threading as _t
-        _t.Thread(
-            target=lambda: buzzer.beep(count=count, duration_ms=duration_ms, gap_ms=gap_ms),
-            daemon=True,
-        ).start()
+        _beep_q.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
 
     def get_screens() -> list[tuple[str, str]]:
         return _build_screens(args, _read_all(args))
@@ -185,7 +197,7 @@ def run(args: argparse.Namespace) -> None:
     menu._reset_fn = fsm.reset
 
     # Short beep on every press-down — immediate feedback that the press registered.
-    button.on_press_start(lambda: _beep_async(count=1, duration_ms=80))
+    button.on_press_start(lambda: _beep_async(count=1, duration_ms=150))
     # Long beep when held past the threshold — cues the user to release for long press.
     button.on_held(lambda: _beep_async(count=1, duration_ms=400))
 
@@ -202,6 +214,7 @@ def run(args: argparse.Namespace) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        _beep_q.put(None)  # signal worker to exit
         button.stop()
         lcd.stop()
         buzzer.cleanup()
