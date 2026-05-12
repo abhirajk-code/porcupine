@@ -3,12 +3,14 @@
 # CLI flags always override values set here.
 
 [monitors]
-# Set to false to disable a monitor permanently.
-boot  = true
-power = true
-cpu   = true
-temp  = true
-net   = true
+# How often each monitor appears in the display cycle.
+# 0 = disabled, 1 = every cycle (default), 2 = every other cycle, 5 = every 5th cycle, etc.
+boot_every  = 1
+power_every = 1
+cpu_every   = 1
+temp_every  = 1
+net_every   = 1
+gpio_every  = 1
 
 [hardware]
 # I2C address of the LCD backpack (PCF8574). Use hex (0x27) or decimal (39).
@@ -21,7 +23,7 @@ ina219_addr = 0x41
 
 [display]
 # Seconds between automatic screen transitions.
-refresh = 3
+refresh = 5
 
 [alerts]
 # Thresholds that trigger buzzer alerts.

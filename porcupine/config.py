@@ -20,10 +20,11 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
 
     result: dict = {}
 
-    # [monitors]
+    # [monitors]  — only {flag}_every keys; 0 = disabled, N = every Nth cycle
     for flag in _MONITOR_FLAGS:
-        if cp.has_option("monitors", flag):
-            result[flag] = cp.getboolean("monitors", flag)
+        every_key = f"{flag}_every"
+        if cp.has_option("monitors", every_key):
+            result[every_key] = cp.getint("monitors", every_key)
 
     # [hardware]
     if cp.has_option("hardware", "lcd_addr"):
@@ -62,14 +63,14 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         description="Raspberry Pi system monitor",
     )
 
-    # Monitor flags: BooleanOptionalAction gives --power / --no-power.
-    # default=None lets us distinguish "not given" from "explicitly set".
+    # Monitor frequency: 0 = disabled, 1 = every cycle, N = every Nth cycle.
     for flag in _MONITOR_FLAGS:
         parser.add_argument(
-            f"--{flag}",
-            action=argparse.BooleanOptionalAction,
-            default=None,
-            help=f"Enable or disable the {flag} monitor",
+            f"--{flag}-every",
+            type=int,
+            default=file_cfg.get(f"{flag}_every", 1),
+            metavar="N",
+            help=f"Show {flag} screen every Nth cycle; 0 disables (default 1)",
         )
 
     # Numeric flags: config file values become the parser defaults so CLI
@@ -98,7 +99,7 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
     )
     parser.add_argument(
         "--refresh", type=float,
-        default=file_cfg.get("refresh", 3.0),
+        default=file_cfg.get("refresh", 5.0),
         metavar="SECS",
         help="Screen refresh interval in seconds",
     )
@@ -124,11 +125,4 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         help=f"Path to config file (default: {DEFAULT_CONFIG_PATH})",
     )
 
-    args = parser.parse_args(argv)
-
-    # Resolve monitor flags: None → config file value → True (all on by default).
-    for flag in _MONITOR_FLAGS:
-        if getattr(args, flag) is None:
-            setattr(args, flag, file_cfg.get(flag, True))
-
-    return args
+    return parser.parse_args(argv)

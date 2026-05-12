@@ -36,30 +36,30 @@ def test_load_config_empty_file_returns_empty(tmp_path):
 # load_config — monitors section
 # ---------------------------------------------------------------------------
 
-def test_load_config_reads_monitor_flags(tmp_path):
+def test_load_config_reads_monitor_every(tmp_path):
     path = write_conf(tmp_path, """
         [monitors]
-        power = true
-        cpu   = false
-        temp  = true
-        net   = false
+        power_every = 2
+        cpu_every   = 0
+        temp_every  = 3
+        net_every   = 1
     """)
     cfg = load_config(path)
-    assert cfg["power"] is True
-    assert cfg["cpu"] is False
-    assert cfg["temp"] is True
-    assert cfg["net"] is False
+    assert cfg["power_every"] == 2
+    assert cfg["cpu_every"]   == 0
+    assert cfg["temp_every"]  == 3
+    assert cfg["net_every"]   == 1
 
 
 def test_load_config_partial_monitors_section(tmp_path):
     path = write_conf(tmp_path, """
         [monitors]
-        cpu = false
+        cpu_every = 0
     """)
     cfg = load_config(path)
-    assert cfg["cpu"] is False
-    assert "power" not in cfg
-    assert "temp" not in cfg
+    assert cfg["cpu_every"] == 0
+    assert "power_every" not in cfg
+    assert "temp_every" not in cfg
 
 
 # ---------------------------------------------------------------------------
@@ -151,11 +151,11 @@ def test_load_config_full_file(tmp_path):
 
 def test_parse_args_defaults_all_monitors_enabled(tmp_path):
     args = parse_args([], config_path=str(tmp_path / "none.conf"))
-    assert args.boot  is True
-    assert args.power is True
-    assert args.cpu   is True
-    assert args.temp  is True
-    assert args.net   is True
+    assert args.boot_every  == 1
+    assert args.power_every == 1
+    assert args.cpu_every   == 1
+    assert args.temp_every  == 1
+    assert args.net_every   == 1
 
 
 def test_parse_args_defaults_numeric_values(tmp_path):
@@ -163,7 +163,7 @@ def test_parse_args_defaults_numeric_values(tmp_path):
     assert args.lcd_addr   == 0x27
     assert args.button_pin == 4
     assert args.buzzer_pin == 18
-    assert args.refresh    == pytest.approx(3.0)
+    assert args.refresh    == pytest.approx(5.0)
     assert args.temp_warn  == pytest.approx(80.0)
     assert args.cpu_warn   == pytest.approx(90.0)
     assert args.mem_warn   == pytest.approx(90.0)
@@ -174,12 +174,12 @@ def test_parse_args_defaults_numeric_values(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_parse_args_cli_monitor_flags(tmp_path):
-    args = parse_args(["--power", "--no-cpu", "--no-temp", "--no-net"],
+    args = parse_args(["--cpu-every", "0", "--temp-every", "0", "--net-every", "0"],
                       config_path=str(tmp_path / "none.conf"))
-    assert args.power is True
-    assert args.cpu   is False
-    assert args.temp  is False
-    assert args.net   is False
+    assert args.power_every == 1   # unchanged default
+    assert args.cpu_every   == 0
+    assert args.temp_every  == 0
+    assert args.net_every   == 0
 
 
 def test_parse_args_cli_numeric_overrides(tmp_path):
@@ -209,16 +209,16 @@ def test_parse_args_cli_alert_overrides(tmp_path):
 def test_parse_args_config_file_sets_monitor_flags(tmp_path):
     path = write_conf(tmp_path, """
         [monitors]
-        power = false
-        cpu   = true
-        temp  = false
-        net   = true
+        power_every = 0
+        cpu_every   = 1
+        temp_every  = 0
+        net_every   = 2
     """)
     args = parse_args([], config_path=path)
-    assert args.power is False
-    assert args.cpu   is True
-    assert args.temp  is False
-    assert args.net   is True
+    assert args.power_every == 0
+    assert args.cpu_every   == 1
+    assert args.temp_every  == 0
+    assert args.net_every   == 2
 
 
 def test_parse_args_config_file_sets_numeric_values(tmp_path):
@@ -246,11 +246,11 @@ def test_parse_args_config_file_sets_numeric_values(tmp_path):
 def test_cli_overrides_config_file_monitor_flag(tmp_path):
     path = write_conf(tmp_path, """
         [monitors]
-        power = false
+        power_every = 0
     """)
-    # Config says power=false, CLI says --power → CLI wins
-    args = parse_args(["--power"], config_path=path)
-    assert args.power is True
+    # Config says power_every=0, CLI says --power-every 1 → CLI wins
+    args = parse_args(["--power-every", "1"], config_path=path)
+    assert args.power_every == 1
 
 
 def test_cli_overrides_config_file_numeric(tmp_path):
@@ -288,4 +288,4 @@ def test_parse_args_config_flag_selects_file(tmp_path):
 def test_parse_args_config_flag_missing_file_uses_defaults(tmp_path):
     missing = str(tmp_path / "ghost.conf")
     args = parse_args(["--config", missing])
-    assert args.refresh == pytest.approx(3.0)  # hardcoded default
+    assert args.refresh == pytest.approx(5.0)  # hardcoded default
