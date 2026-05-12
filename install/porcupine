@@ -75,10 +75,9 @@ cmd_status() {
     printf "Config:   %s\n" "$CONF"
 
     printf "\nMonitors:\n"
-    printf "  %-10s %-8s %s\n" "monitor" "enabled" "every"
+    printf "  %-10s %s\n" "monitor" "every (0=off)"
     for m in boot power cpu temp net gpio; do
-        printf "  %-10s %-8s %s\n" "$m" \
-            "$(cfg_get monitors "$m" true)" \
+        printf "  %-10s %s\n" "$m" \
             "$(cfg_get monitors "${m}_every" 1)"
     done
 
@@ -118,8 +117,8 @@ cmd_enable_disable() {
         boot|power|cpu|temp|net|gpio) ;;
         *) die "unknown monitor '$monitor' — choose from: boot power cpu temp net gpio";;
     esac
-    local val; [[ $action == enable ]] && val=true || val=false
-    cfg_set monitors "$monitor" "$val"
+    local val; [[ $action == enable ]] && val=1 || val=0
+    cfg_set monitors "${monitor}_every" "$val"
     echo "$monitor ${action}d"
     _restart_if_running
 }

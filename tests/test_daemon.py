@@ -15,7 +15,7 @@ from porcupine.interfaces.lcd import LCD
 
 def _args(**overrides) -> argparse.Namespace:
     defaults = dict(
-        boot=True, power=True, cpu=True, temp=True, net=True,
+        boot_every=1, power_every=1, cpu_every=1, temp_every=1, net_every=1, gpio_every=1,
         lcd_addr=0x27, button_pin=4, buzzer_pin=18, ina219_addr=0x41,
         refresh=3.0,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0,
@@ -153,7 +153,7 @@ def test_fmt_net_truncates_long_interface_name():
 # ---------------------------------------------------------------------------
 
 def test_read_all_calls_only_enabled_monitors():
-    args = _args(boot=True, power=False, cpu=False, temp=False, net=False)
+    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
     with patch("porcupine.daemon.boot.read", return_value={"boot_count": 3, "uptime_s": 100.0}), \
          patch("porcupine.daemon.cpu_mem.read") as mock_cpu:
         data = daemon._read_all(args)
@@ -164,7 +164,7 @@ def test_read_all_calls_only_enabled_monitors():
 
 
 def test_read_all_merges_multiple_monitors():
-    args = _args(boot=True, power=False, cpu=True, temp=False, net=False)
+    args = _args(boot_every=1, power_every=0, cpu_every=1, temp_every=0, net_every=0, gpio_every=0)
     with patch("porcupine.daemon.boot.read", return_value={"boot_count": 1, "uptime_s": 60.0}), \
          patch("porcupine.daemon.cpu_mem.read", return_value={"cpu_avg_pct": 30.0, "mem_pct": 50.0,
                                                               "cpu_pct": [], "mem_used_mb": 512,
@@ -176,14 +176,14 @@ def test_read_all_merges_multiple_monitors():
 
 
 def test_read_all_skips_failing_monitor():
-    args = _args(boot=True, power=False, cpu=False, temp=False, net=False)
+    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
     with patch("porcupine.daemon.boot.read", side_effect=RuntimeError("hw error")):
         data = daemon._read_all(args)
     assert data == {}
 
 
 def test_read_all_no_monitors_returns_empty():
-    args = _args(boot=False, power=False, cpu=False, temp=False, net=False)
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
     with patch("porcupine.daemon.boot.read") as m:
         data = daemon._read_all(args)
     m.assert_not_called()
@@ -195,7 +195,7 @@ def test_read_all_no_monitors_returns_empty():
 # ---------------------------------------------------------------------------
 
 def test_build_screens_one_per_enabled_monitor():
-    args = _args(boot=True, power=False, cpu=True, temp=False, net=False)
+    args = _args(boot_every=1, power_every=0, cpu_every=1, temp_every=0, net_every=0, gpio_every=0)
     data = {"boot_count": 1, "uptime_s": 60, "cpu_avg_pct": 10, "mem_pct": 20,
             "cpu_pct": [], "mem_used_mb": 100, "mem_total_mb": 500}
     screens = daemon._build_screens(args, data)
@@ -203,7 +203,7 @@ def test_build_screens_one_per_enabled_monitor():
 
 
 def test_build_screens_respects_order():
-    args = _args(boot=True, power=False, cpu=False, temp=False, net=True)
+    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=1, gpio_every=0)
     data = {"boot_count": 1, "uptime_s": 0,
             "interface": "eth0", "rx_bps": 0, "tx_bps": 0,
             "rx_total_mb": 0, "tx_total_mb": 0}
@@ -213,7 +213,7 @@ def test_build_screens_respects_order():
 
 
 def test_build_screens_fallback_when_none_enabled():
-    args = _args(boot=False, power=False, cpu=False, temp=False, net=False)
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
     screens = daemon._build_screens(args, {})
     assert screens == [("No monitors", "enabled")]
 
@@ -223,7 +223,7 @@ def test_build_screens_fallback_when_none_enabled():
 # ---------------------------------------------------------------------------
 
 def test_run_starts_and_stops_cleanly(tmp_path):
-    args = _args(boot=True, power=False, cpu=False, temp=False, net=False)
+    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
 
     iteration = {"count": 0}
 

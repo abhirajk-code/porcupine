@@ -121,7 +121,7 @@ def _read_all(args: argparse.Namespace) -> dict:
     """Call read() on every enabled monitor and merge results."""
     merged: dict = {}
     for flag, module, _ in _MONITOR_DEFS:
-        if getattr(args, flag, False):
+        if getattr(args, f"{flag}_every", 0) > 0:
             try:
                 merged.update(module.read())
             except Exception:
@@ -137,8 +137,8 @@ def _build_screens(args: argparse.Namespace, data: dict, cycle: int = 0) -> list
     screens = [
         formatter(data)
         for flag, _, formatter in _MONITOR_DEFS
-        if getattr(args, flag, False)
-        and cycle % max(1, getattr(args, f"{flag}_every", 1)) == 0
+        if (every := getattr(args, f"{flag}_every", 0)) > 0
+        and cycle % every == 0
     ]
     return screens or [("No monitors", "enabled")]
 

@@ -3,16 +3,8 @@
 # CLI flags always override values set here.
 
 [monitors]
-# Set to false to disable a monitor permanently.
-boot  = true
-power = true
-cpu   = true
-temp  = true
-net   = true
-gpio  = true
-
 # How often each monitor appears in the display cycle.
-# 1 = every cycle (default), 2 = every other cycle, 5 = every 5th cycle, etc.
+# 0 = disabled, 1 = every cycle (default), 2 = every other cycle, 5 = every 5th cycle, etc.
 boot_every  = 1
 power_every = 1
 cpu_every   = 1
