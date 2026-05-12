@@ -112,8 +112,8 @@ cmd_enable_disable() {
     local action=$1 monitor=$2
     need_root "$action $monitor"
     case $monitor in
-        boot|power|cpu|temp|net) ;;
-        *) die "unknown monitor '$monitor' — choose from: boot power cpu temp net";;
+        boot|power|cpu|temp|net|gpio) ;;
+        *) die "unknown monitor '$monitor' — choose from: boot power cpu temp net gpio";;
     esac
     local val; [[ $action == enable ]] && val=true || val=false
     cfg_set monitors "$monitor" "$val"
@@ -150,8 +150,8 @@ Commands:
   status                   Show service state and current configuration
   test                     Run hardware tests (interactive)
 
-  enable  <monitor>        Enable a monitor  (boot|power|cpu|temp|net)
-  disable <monitor>        Disable a monitor (boot|power|cpu|temp|net)
+  enable  <monitor>        Enable a monitor  (boot|power|cpu|temp|net|gpio)
+  disable <monitor>        Disable a monitor (boot|power|cpu|temp|net|gpio)
 
   set refresh <seconds>    Time between display pages
   set temp-warn <°C>       CPU temperature warning threshold

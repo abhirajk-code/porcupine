@@ -131,7 +131,7 @@ def test_build_screens_end_to_end(tmp_path):
     import porcupine.daemon as daemon
 
     args = parse_args(
-        ["--no-power", "--no-temp", "--no-net"],
+        ["--no-power", "--no-temp", "--no-net", "--no-gpio"],
         config_path=str(tmp_path / "none.conf"),
     )
     data = {
@@ -150,7 +150,7 @@ def test_read_all_disabled_monitors_returns_empty(tmp_path):
     import porcupine.daemon as daemon
 
     args = parse_args(
-        ["--no-boot", "--no-power", "--no-cpu", "--no-temp", "--no-net"],
+        ["--no-boot", "--no-power", "--no-cpu", "--no-temp", "--no-net", "--no-gpio"],
         config_path=str(tmp_path / "none.conf"),
     )
     data = daemon._read_all(args)

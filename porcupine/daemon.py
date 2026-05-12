@@ -11,7 +11,37 @@ import time
 from .interfaces.button import Button
 from .interfaces.buzzer import AlertChecker, Buzzer
 from .interfaces.lcd import LCD
-from .monitors import boot, cpu_mem, network, power, temperature
+from .monitors import boot, cpu_mem, gpio_pins, network, power, temperature
+
+
+# ---------------------------------------------------------------------------
+# Custom LCD characters (CGRAM slots 0-3) for the GPIO pin screen
+#
+# Each bitmap is 8 rows × 5 cols.  Bit 4 is the leftmost pixel.
+#   slot 0: Output High — solid up-arrow + base bar  (pin driving high)
+#   slot 1: Output Low  — small up-arrow + base bar  (pin driving low)
+#   slot 2: Input High  — top bar + solid down-arrow (pin reading high)
+#   slot 3: Input Low   — top bar + small down-arrow (pin reading low)
+# ---------------------------------------------------------------------------
+
+_CGRAM: list[list[int]] = [
+    [0b00100, 0b01110, 0b11111, 0b00100, 0b00100, 0b00100, 0b11111, 0b00000],
+    [0b00000, 0b00100, 0b01110, 0b00100, 0b00100, 0b00100, 0b11111, 0b00000],
+    [0b11111, 0b00100, 0b00100, 0b00100, 0b11111, 0b01110, 0b00100, 0b00000],
+    [0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110, 0b00100, 0b00000],
+]
+
+# Map gpio_pins state strings → display character
+_GPIO_CHARS: dict[str | None, str] = {
+    "3v3":   "+",
+    "5v":    "^",
+    "gnd":   "_",
+    "out_h": chr(0),
+    "out_l": chr(1),
+    "in_h":  chr(2),
+    "in_l":  chr(3),
+    None:    " ",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +84,17 @@ def _fmt_net(data: dict) -> tuple[str, str]:
     )
 
 
+def _fmt_gpio(data: dict) -> tuple[str, str]:
+    pins = data.get("gpio_pins", [])
+    chars = [_GPIO_CHARS.get(s, " ") for s in pins]
+    # Pad to 40 in case the monitor returned fewer entries
+    chars += [" "] * (40 - len(chars))
+    # Physical header: odd pins (1,3,...,39) on row 1; even pins (2,4,...,40) on row 2
+    row1 = "".join(chars[i] for i in range(0, 40, 2))
+    row2 = "".join(chars[i] for i in range(1, 40, 2))
+    return row1, row2
+
+
 def _bps_str(bps: float) -> str:
     if bps >= 1024 * 1024:
         return f"{bps / (1024 * 1024):.1f}M"
@@ -72,6 +113,7 @@ _MONITOR_DEFS = [
     ("cpu",   cpu_mem,     _fmt_cpu),
     ("temp",  temperature, _fmt_temp),
     ("net",   network,     _fmt_net),
+    ("gpio",  gpio_pins,   _fmt_gpio),
 ]
 
 
@@ -207,7 +249,8 @@ def run(args: argparse.Namespace) -> None:
     boot.init()
     power.init(addr=args.ina219_addr)
 
-    lcd    = LCD(i2c_addr=args.lcd_addr)
+    lcd    = LCD(i2c_addr=args.lcd_addr, cols=20, rows=2)
+    lcd.load_custom_chars(_CGRAM)
     button = Button(pin=args.button_pin, long_press_ms=2000)
     buzzer = Buzzer(pin=args.buzzer_pin)
     alert  = AlertChecker(

@@ -123,6 +123,12 @@ class LCD:
             self._screens = screens
             self._index = min(self._index, max(0, len(screens) - 1))
 
+    def load_custom_chars(self, chars: list[list[int]]) -> None:
+        """Load up to 8 custom characters into CGRAM (slots 0–7)."""
+        with self._lock:
+            for i, bitmap in enumerate(chars[:8]):
+                self._lcd.create_char(i, bitmap)
+
     # ------------------------------------------------------------------
     # Internal helpers (must be called with _lock held)
     # ------------------------------------------------------------------
@@ -174,6 +180,9 @@ class _StubLCD:
         row, col = self.cursor_pos
         if row < self.rows:
             self._lines[row] = text[: self.cols - col]
+
+    def create_char(self, location: int, bitmap: list[int]) -> None:
+        pass
 
     def current_display(self) -> list[str]:
         return list(self._lines)

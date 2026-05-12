@@ -4,7 +4,7 @@ import configparser
 
 DEFAULT_CONFIG_PATH = "/etc/porcupine/porcupine.conf"
 
-_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net")
+_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net", "gpio")
 
 
 def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
