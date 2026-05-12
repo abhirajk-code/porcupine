@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Step 2 of 3 — Interactive hardware tests.
+# Interactive hardware tests.
 # Tests each interface and monitor, prompting for confirmation at each step.
 # Button tests ask you to perform an action and verify it was captured.
 #
 # Usage:
-#   sudo bash install/2_test.sh
+#   sudo bash install/test.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -176,10 +176,10 @@ echo "════════════════════════�
 if [[ $FAIL -gt 0 ]]; then
     echo
     echo "  Some tests FAILED. Fix hardware issues and re-run:"
-    echo "    sudo bash $SCRIPT_DIR/2_test.sh"
+    echo "    sudo bash $SCRIPT_DIR/test.sh"
     exit 1
 else
     echo
     echo "  All tests passed (or skipped)."
-    echo "  Next: sudo bash $SCRIPT_DIR/3_enable.sh"
+    echo "  Next: sudo bash $SCRIPT_DIR/enable.sh"
 fi

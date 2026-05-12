@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Hardware test helper — called by install/2_test.sh.
+Hardware test helper — called by install/test.sh.
 
 Exit codes:
   0  — test passed / action detected correctly

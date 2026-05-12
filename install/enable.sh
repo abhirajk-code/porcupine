@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Step 3 of 3 — Enable the porcupine systemd service.
+# Enable the porcupine systemd service.
 # The service will start now and automatically on every boot.
 #
-# Prerequisite: Step 1 (1_install.sh) must have been run first.
+# Prerequisite: install.sh must have been run first.
 #
 # Usage:
-#   sudo bash install/3_enable.sh
+#   sudo bash install/enable.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -26,13 +26,13 @@ die() { echo "[FAIL]  $*" >&2; exit 1; }
 # Pre-flight checks
 # ---------------------------------------------------------------------------
 [[ -f "$SERVICE_DEST" ]] \
-    || die "Service file not found: $SERVICE_DEST — run Step 1 first: sudo bash $SCRIPT_DIR/1_install.sh"
+    || die "Service file not found: $SERVICE_DEST — run Step 1 first: sudo bash $SCRIPT_DIR/install.sh"
 
 [[ -f "$CONFIG_FILE" ]] \
-    || die "Config file not found: $CONFIG_FILE — run Step 1 first: sudo bash $SCRIPT_DIR/1_install.sh"
+    || die "Config file not found: $CONFIG_FILE — run Step 1 first: sudo bash $SCRIPT_DIR/install.sh"
 
 "$VENV_DIR/bin/porcupine" --help &>/dev/null 2>&1 \
-    || die "porcupine not found in venv ($VENV_DIR) — run Step 1 first: sudo bash $SCRIPT_DIR/1_install.sh"
+    || die "porcupine not found in venv ($VENV_DIR) — run Step 1 first: sudo bash $SCRIPT_DIR/install.sh"
 
 # ---------------------------------------------------------------------------
 # Enable and start

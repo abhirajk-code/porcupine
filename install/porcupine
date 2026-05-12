@@ -5,7 +5,7 @@ set -euo pipefail
 
 CONF=/etc/porcupine/porcupine.conf
 SERVICE=porcupine
-TEST_SH=/opt/porcupine/2_test.sh
+TEST_SH=/opt/porcupine/test.sh
 
 # ---------------------------------------------------------------------------
 # Helpers
