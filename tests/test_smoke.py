@@ -213,13 +213,13 @@ def test_setup_script_is_executable():
 def test_setup_script_orchestrates_three_steps():
     setup = Path(__file__).parent.parent / "install" / "setup.sh"
     text = setup.read_text()
-    assert "1_install.sh" in text
-    assert "2_test.sh" in text
-    assert "3_enable.sh" in text
+    assert "install.sh" in text
+    assert "test.sh" in text
+    assert "enable.sh" in text
 
 
 def test_step1_uses_venv():
-    step1 = Path(__file__).parent.parent / "install" / "1_install.sh"
+    step1 = Path(__file__).parent.parent / "install" / "install.sh"
     text = step1.read_text()
     assert "VENV_DIR" in text
     assert "venv" in text
@@ -227,32 +227,32 @@ def test_step1_uses_venv():
 
 
 def test_step1_has_prompt_functions():
-    step1 = Path(__file__).parent.parent / "install" / "1_install.sh"
+    step1 = Path(__file__).parent.parent / "install" / "install.sh"
     text = step1.read_text()
     for fn in ("prompt()", "prompt_bool()", "configure_interactive()",
                "configure_noninteractive()", "write_config()"):
-        assert fn in text, f"1_install.sh must define {fn}"
+        assert fn in text, f"install.sh must define {fn}"
 
 
 def test_step1_writes_all_config_keys():
-    step1 = Path(__file__).parent.parent / "install" / "1_install.sh"
+    step1 = Path(__file__).parent.parent / "install" / "install.sh"
     text = step1.read_text()
     for key in ("lcd_addr", "button_pin", "buzzer_pin", "ina219_addr", "refresh",
                 "temp_warn", "cpu_warn", "mem_warn",
-                "boot", "power", "cpu", "temp", "net"):
-        assert key in text, f"1_install.sh must write config key: {key}"
+                "boot_every", "power_every", "cpu_every", "temp_every", "net_every"):
+        assert key in text, f"install.sh must write config key: {key}"
 
 
 def test_step2_tests_all_interfaces():
-    step2 = Path(__file__).parent.parent / "install" / "2_test.sh"
+    step2 = Path(__file__).parent.parent / "install" / "test.sh"
     text = step2.read_text()
     for subcmd in ("lcd", "buzzer", "button-short", "button-long",
                    "monitor-boot", "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net"):
-        assert subcmd in text, f"2_test.sh must invoke test_hardware.py {subcmd}"
+        assert subcmd in text, f"test.sh must invoke test_hardware.py {subcmd}"
 
 
 def test_step3_enables_service():
-    step3 = Path(__file__).parent.parent / "install" / "3_enable.sh"
+    step3 = Path(__file__).parent.parent / "install" / "enable.sh"
     text = step3.read_text()
     assert "systemctl enable" in text
     assert "systemctl is-active" in text
@@ -268,7 +268,7 @@ def test_test_hardware_py_has_all_commands():
 
 def test_all_install_scripts_executable():
     install = Path(__file__).parent.parent / "install"
-    for name in ("setup.sh", "1_install.sh", "2_test.sh", "3_enable.sh", "check.sh"):
+    for name in ("setup.sh", "install.sh", "test.sh", "enable.sh", "check.sh"):
         f = install / name
         assert f.exists(), f"{name} must exist"
         assert f.stat().st_mode & 0o111, f"{name} must be executable"
