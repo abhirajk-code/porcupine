@@ -46,7 +46,7 @@ def _load_cfg() -> dict:
         "lcd_addr":    int(_get("hardware", "lcd_addr",    "0x27"), 0),
         "button_pin":  int(_get("hardware", "button_pin",  "4")),
         "buzzer_pin":  int(_get("hardware", "buzzer_pin",  "18")),
-        "ina219_addr": int(_get("hardware", "ina219_addr", "0x40"), 0),
+        "ina219_addr": int(_get("hardware", "ina219_addr", "0x41"), 0),
     }
 
 

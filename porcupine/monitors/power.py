@@ -25,10 +25,10 @@ _VBAT_MIN = 9.0
 _VBAT_MAX = 12.6
 
 _bus:  object = None
-_addr: int    = 0x40
+_addr: int    = 0x41
 
 
-def init(addr: int = 0x40) -> None:
+def init(addr: int = 0x41) -> None:
     """Initialise INA219 and write calibration register. Call once at startup."""
     global _bus, _addr
     _addr = addr

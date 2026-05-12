@@ -103,7 +103,7 @@ configure_interactive() {
     local d_lcd;    d_lcd="$(_cfg_get    hardware lcd_addr    0x27)"
     local d_btn;    d_btn="$(_cfg_get    hardware button_pin  4)"
     local d_buz;    d_buz="$(_cfg_get    hardware buzzer_pin  18)"
-    local d_ina;    d_ina="$(_cfg_get    hardware ina219_addr 0x40)"
+    local d_ina;    d_ina="$(_cfg_get    hardware ina219_addr 0x41)"
     local d_ref;    d_ref="$(_cfg_get    display  refresh     3)"
     local d_boot;   d_boot="$(_cfg_get   monitors boot        true)"
     local d_power;  d_power="$(_cfg_get  monitors power       true)"
@@ -118,7 +118,7 @@ configure_interactive() {
     prompt      "LCD I2C address  (hex ok, e.g. 0x27 or 0x3f)" "$d_lcd"   LCD_ADDR
     prompt      "Button GPIO pin  (BCM numbering)"              "$d_btn"   BUTTON_PIN
     prompt      "Buzzer GPIO pin  (BCM numbering)"              "$d_buz"   BUZZER_PIN
-    prompt      "INA219 I2C address (hex ok, e.g. 0x40)"       "$d_ina"   INA219_ADDR
+    prompt      "INA219 I2C address (hex ok, e.g. 0x41)"       "$d_ina"   INA219_ADDR
 
     h2 "Display"
     prompt      "Screen refresh interval in seconds"            "$d_ref"   REFRESH
@@ -137,7 +137,7 @@ configure_interactive() {
 }
 
 configure_noninteractive() {
-    LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; INA219_ADDR="0x40"; REFRESH="3"
+    LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; INA219_ADDR="0x41"; REFRESH="3"
     ENABLE_BOOT="true"; ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"; ENABLE_NET="true"
     TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"
     info "Non-interactive — using all defaults"

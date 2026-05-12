@@ -16,7 +16,7 @@ from porcupine.interfaces.lcd import LCD
 def _args(**overrides) -> argparse.Namespace:
     defaults = dict(
         boot=True, power=True, cpu=True, temp=True, net=True,
-        lcd_addr=0x27, button_pin=4, buzzer_pin=18, ina219_addr=0x40,
+        lcd_addr=0x27, button_pin=4, buzzer_pin=18, ina219_addr=0x41,
         refresh=3.0,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0,
     )

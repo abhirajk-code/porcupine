@@ -16,8 +16,8 @@ lcd_addr    = 0x27
 # BCM GPIO pin numbers
 button_pin  = 4
 buzzer_pin  = 18
-# I2C address of the INA219 power/battery monitor (0x40–0x43 depending on A0/A1 pins).
-ina219_addr = 0x40
+# I2C address of the INA219 power/battery monitor (0x41–0x43 depending on A0/A1 pins).
+ina219_addr = 0x41
 
 [display]
 # Seconds between automatic screen transitions.

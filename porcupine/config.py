@@ -82,9 +82,9 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
     )
     parser.add_argument(
         "--ina219-addr", type=lambda x: int(x, 0),
-        default=file_cfg.get("ina219_addr", 0x40),
+        default=file_cfg.get("ina219_addr", 0x41),
         metavar="ADDR",
-        help="I2C address of the INA219 power monitor (hex ok, e.g. 0x40)",
+        help="I2C address of the INA219 power monitor (hex ok, e.g. 0x41)",
     )
     parser.add_argument(
         "--button-pin", type=int,
