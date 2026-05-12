@@ -1,7 +1,6 @@
-"""GPIO button input handler with short/long press detection and menu FSM."""
+"""GPIO button input handler with short/long press detection."""
 import threading
 import time
-from enum import Enum, auto
 from typing import Callable
 
 try:
@@ -176,68 +175,6 @@ class Button:
         if self._held_timer is not None:
             self._held_timer.cancel()
             self._held_timer = None
-
-
-# ---------------------------------------------------------------------------
-# Menu FSM
-# ---------------------------------------------------------------------------
-
-class _State(Enum):
-    NORMAL = auto()
-    MENU = auto()
-
-
-class MenuFSM:
-    """
-    Wires a Button to normal/menu mode transitions.
-
-    Normal mode:
-      short press → next_screen_cb()
-      long press  → enter_menu_cb()  + switch to MENU
-
-    Menu mode:
-      short press → menu_next_cb()
-      long press  → menu_confirm_cb() + switch to NORMAL
-    """
-
-    def __init__(
-        self,
-        button: Button,
-        next_screen_cb: Callable,
-        enter_menu_cb: Callable,
-        menu_next_cb: Callable,
-        menu_confirm_cb: Callable,
-    ):
-        self._next_screen_cb = next_screen_cb
-        self._enter_menu_cb = enter_menu_cb
-        self._menu_next_cb = menu_next_cb
-        self._menu_confirm_cb = menu_confirm_cb
-        self._state = _State.NORMAL
-
-        button.on_short_press(self._on_short)
-        button.on_long_press(self._on_long)
-
-    @property
-    def in_menu(self) -> bool:
-        return self._state == _State.MENU
-
-    def reset(self) -> None:
-        """Force return to NORMAL (e.g. after a shutdown/restart is confirmed)."""
-        self._state = _State.NORMAL
-
-    def _on_short(self) -> None:
-        if self._state == _State.NORMAL:
-            self._next_screen_cb()
-        else:
-            self._menu_next_cb()
-
-    def _on_long(self) -> None:
-        if self._state == _State.NORMAL:
-            self._state = _State.MENU
-            self._enter_menu_cb()
-        else:
-            self._state = _State.NORMAL
-            self._menu_confirm_cb()
 
 
 # ---------------------------------------------------------------------------

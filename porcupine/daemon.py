@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 
-from .interfaces.button import Button, MenuFSM
+from .interfaces.button import Button
 from .interfaces.buzzer import AlertChecker, Buzzer
 from .interfaces.lcd import LCD
 from .monitors import cpu_mem, network, power, temperature
@@ -94,60 +94,93 @@ def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]
 
 
 # ---------------------------------------------------------------------------
-# Menu controller
+# Button controller
 # ---------------------------------------------------------------------------
 
-class _MenuController:
-    _TOGGLE_FLAGS = frozenset(("power", "cpu", "temp", "net"))
-    _ITEMS: list[tuple[str, str]] = [
-        ("Toggle POWER", "power"),
-        ("Toggle CPU  ", "cpu"),
-        ("Toggle TEMP ", "temp"),
-        ("Toggle NET  ", "net"),
-        ("Restart Pi  ", "restart"),
-        ("Shutdown Pi ", "shutdown"),
-    ]
+class _ButtonController:
+    """
+    Three button-press sequences:
+      1. Short press                  — toggle monitoring (backlight + screen cycling)
+      2. Short + short press (< 3 s)  — 20-second reboot countdown
+      3. Short + long press  (< 3 s)  — 20-second shutdown countdown
 
-    def __init__(
-        self,
-        lcd: LCD,
-        args: argparse.Namespace,
-        get_screens,       # callable → list[tuple[str,str]]
-    ):
-        self._lcd = lcd
-        self._args = args
-        self._get_screens = get_screens
-        self._reset_fn = lambda: None   # wired after MenuFSM is created
-        self._index = 0
+    During a countdown, a long press cancels it.
+    """
 
-    def enter(self) -> None:
-        self._index = 0
-        self._render()
+    _WINDOW_S    = 3.0
+    _COUNTDOWN_S = 20
 
-    def next_item(self) -> None:
-        self._index = (self._index + 1) % len(self._ITEMS)
-        self._render()
+    def __init__(self, button: Button, lcd: LCD):
+        self._lcd        = lcd
+        self._monitoring = True
+        self._state      = "idle"   # idle | after_first | counting
+        self._window_timer: threading.Timer | None = None
+        self._cancel     = threading.Event()
 
-    def confirm(self) -> None:
-        _, action = self._ITEMS[self._index]
-        if action in self._TOGGLE_FLAGS:
-            setattr(self._args, action, not getattr(self._args, action))
-            self._lcd.update_screens(self._get_screens())
-            self._render()
-        elif action == "restart":
-            self._reset_fn()
-            subprocess.run(["sudo", "reboot"], check=False)
-        elif action == "shutdown":
-            self._reset_fn()
-            subprocess.run(["sudo", "shutdown", "-h", "now"], check=False)
+        button.on_short_press(self._on_short)
+        button.on_long_press(self._on_long)
 
-    def _render(self) -> None:
-        label, action = self._ITEMS[self._index]
-        if action in self._TOGGLE_FLAGS:
-            state = "ON " if getattr(self._args, action) else "OFF"
-            self._lcd.update_menu(f">{label}", f" Now:{state}")
+    @property
+    def monitoring(self) -> bool:
+        return self._monitoring
+
+    def _on_short(self) -> None:
+        if self._state == "idle":
+            self._toggle()
+            self._state = "after_first"
+            self._window_timer = threading.Timer(self._WINDOW_S, self._window_expired)
+            self._window_timer.start()
+        elif self._state == "after_first":
+            self._cancel_window()
+            self._begin_countdown("reboot")
+
+    def _on_long(self) -> None:
+        if self._state == "after_first":
+            self._cancel_window()
+            self._begin_countdown("shutdown")
+        elif self._state == "counting":
+            self._cancel.set()
+
+    def _window_expired(self) -> None:
+        self._state = "idle"
+
+    def _cancel_window(self) -> None:
+        if self._window_timer is not None:
+            self._window_timer.cancel()
+            self._window_timer = None
+
+    def _toggle(self) -> None:
+        self._monitoring = not self._monitoring
+        if self._monitoring:
+            self._lcd.resume()
         else:
-            self._lcd.update_menu(f">{label}", " Hold:confirm")
+            self._lcd.pause()
+
+    def _begin_countdown(self, action: str) -> None:
+        self._state = "counting"
+        if not self._monitoring:
+            self._monitoring = True
+            self._lcd.resume()
+        self._cancel.clear()
+        label = "Rebooting" if action == "reboot" else "Shutdown"
+        self._lcd.enter_menu(f"{label} in {self._COUNTDOWN_S}s", "Long: cancel")
+        threading.Thread(
+            target=self._countdown_loop, args=(action, label), daemon=True
+        ).start()
+
+    def _countdown_loop(self, action: str, label: str) -> None:
+        for remaining in range(self._COUNTDOWN_S - 1, -1, -1):
+            if self._cancel.wait(timeout=1.0):
+                self._lcd.update_menu("Cancelled", "")
+                time.sleep(1.5)
+                self._lcd.exit_menu()
+                self._state = "idle"
+                return
+            self._lcd.update_menu(f"{label} in {remaining}s", "Long: cancel")
+        if action == "reboot":
+            subprocess.run(["sudo", "reboot"], check=False)
+        else:
+            subprocess.run(["sudo", "shutdown", "-h", "now"], check=False)
 
 
 # ---------------------------------------------------------------------------
@@ -189,32 +222,22 @@ def run(args: argparse.Namespace) -> None:
     def _beep_async(count: int, duration_ms: int, gap_ms: int = 0) -> None:
         _beep_q.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
 
-    def get_screens() -> list[tuple[str, str]]:
-        return _build_screens(args, _read_all(args))
+    lcd.start(_build_screens(args, _read_all(args)), refresh_s=args.refresh)
 
-    menu = _MenuController(lcd, args, get_screens)
-    fsm  = MenuFSM(
-        button=button,
-        next_screen_cb=lcd.next_screen,
-        enter_menu_cb=menu.enter,
-        menu_next_cb=menu.next_item,
-        menu_confirm_cb=menu.confirm,
-    )
-    menu._reset_fn = fsm.reset
+    controller = _ButtonController(button, lcd)
 
     # Short beep on every press-down — immediate feedback that the press registered.
     button.on_press_start(lambda: _beep_async(count=1, duration_ms=150))
     # Long beep when held past the threshold — cues the user to release for long press.
     button.on_held(lambda: _beep_async(count=1, duration_ms=400))
 
-    lcd.start(get_screens(), refresh_s=args.refresh)
     button.start()
     _beep_async(count=1, duration_ms=150)
 
     try:
         while True:
             data = _read_all(args)
-            if not fsm.in_menu:
+            if controller.monitoring:
                 lcd.update_screens(_build_screens(args, data))
             alert.check(data)
             time.sleep(args.refresh)

@@ -28,6 +28,7 @@ class LCD:
         self._in_menu: bool = False
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._refresh_s: float = 3.0
 
         if _HAS_RPLCD:
             self._lcd = CharLCD(
@@ -47,6 +48,7 @@ class LCD:
 
     def start(self, screens: list[tuple[str, str]], refresh_s: float = 3.0) -> None:
         """Start the background cycling loop."""
+        self._refresh_s = refresh_s
         with self._lock:
             self._screens = screens
             self._index = 0
@@ -63,6 +65,27 @@ class LCD:
         self.clear()
         with self._lock:
             self._lcd.backlight_enabled = False
+
+    def pause(self) -> None:
+        """Stop cycling, clear display, and turn off backlight."""
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+            self._thread = None
+        with self._lock:
+            self._lcd.clear()
+            self._lcd.backlight_enabled = False
+
+    def resume(self) -> None:
+        """Turn on backlight, render current screen, and restart cycling."""
+        with self._lock:
+            self._lcd.backlight_enabled = True
+            self._render_current()
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._cycle_loop, args=(self._refresh_s,), daemon=True
+        )
+        self._thread.start()
 
     def next_screen(self) -> None:
         """Advance to the next screen (called from button short-press)."""
