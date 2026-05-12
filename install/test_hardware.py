@@ -72,8 +72,8 @@ def cmd_lcd(cfg: dict) -> None:
     lcd.show("Line 1 of 2", "Line 2 of 2")
     time.sleep(3)
 
-    lcd.clear()
-    print("  LCD cleared.")
+    lcd.stop()
+    print("  LCD off.")
 
 
 # ---------------------------------------------------------------------------
