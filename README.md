@@ -21,3 +21,49 @@ The `setup.sh` script will automatically:
 - Install required Python dependencies (`psutil`, `RPi.GPIO`, `RPLCD`, `smbus2`).
 - Copy the `porcupine.service` systemd unit file to `/etc/systemd/system/`.
 - Enable and start the porcupine service so it runs automatically on boot.
+
+## Management CLI
+
+After installation the `porcupine` command is available system-wide.
+
+### Service control
+
+| Command | Description |
+|---|---|
+| `porcupine start` | Start the monitoring service |
+| `porcupine stop` | Stop the monitoring service |
+| `porcupine status` | Show service state and current configuration |
+| `porcupine test` | Run interactive hardware tests |
+
+### Monitors
+
+Enable or disable individual data screens on the LCD display.
+
+```bash
+sudo porcupine enable  <monitor>   # boot | power | cpu | temp | net
+sudo porcupine disable <monitor>
+```
+
+### Settings
+
+All `set` commands require `sudo` and restart the service automatically if it is running.
+
+| Command | Description | Default |
+|---|---|---|
+| `sudo porcupine set refresh <seconds>` | Time between display pages | `3.0` |
+| `sudo porcupine set temp-warn <°C>` | CPU temperature alert threshold | `80.0` |
+| `sudo porcupine set cpu-warn <%>` | CPU usage alert threshold | `90.0` |
+| `sudo porcupine set mem-warn <%>` | Memory usage alert threshold | `90.0` |
+| `sudo porcupine set lcd-addr <hex>` | LCD I2C address | `0x27` |
+| `sudo porcupine set ina219-addr <hex>` | INA219 battery monitor I2C address | `0x41` |
+| `sudo porcupine set button-pin <n>` | Button GPIO pin (BCM numbering) | `4` |
+| `sudo porcupine set buzzer-pin <n>` | Buzzer GPIO pin (BCM numbering) | `18` |
+
+### Logs
+
+```bash
+porcupine showlogs error   # warnings and errors only
+porcupine showlogs all     # full service journal
+```
+
+Backed by `journalctl -u porcupine`. Use arrow keys to scroll, `q` to quit.
