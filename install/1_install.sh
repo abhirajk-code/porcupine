@@ -100,14 +100,16 @@ configure_interactive() {
     echo " Existing config values shown as defaults."
     echo "========================================"
 
-    local d_lcd;    d_lcd="$(_cfg_get    hardware lcd_addr   0x27)"
-    local d_btn;    d_btn="$(_cfg_get    hardware button_pin 4)"
-    local d_buz;    d_buz="$(_cfg_get    hardware buzzer_pin 18)"
-    local d_ref;    d_ref="$(_cfg_get    display  refresh    3)"
-    local d_power;  d_power="$(_cfg_get  monitors power      true)"
-    local d_cpu;    d_cpu="$(_cfg_get    monitors cpu        true)"
-    local d_temp;   d_temp="$(_cfg_get   monitors temp       true)"
-    local d_net;    d_net="$(_cfg_get    monitors net        true)"
+    local d_lcd;    d_lcd="$(_cfg_get    hardware lcd_addr    0x27)"
+    local d_btn;    d_btn="$(_cfg_get    hardware button_pin  4)"
+    local d_buz;    d_buz="$(_cfg_get    hardware buzzer_pin  18)"
+    local d_ina;    d_ina="$(_cfg_get    hardware ina219_addr 0x40)"
+    local d_ref;    d_ref="$(_cfg_get    display  refresh     3)"
+    local d_boot;   d_boot="$(_cfg_get   monitors boot        true)"
+    local d_power;  d_power="$(_cfg_get  monitors power       true)"
+    local d_cpu;    d_cpu="$(_cfg_get    monitors cpu         true)"
+    local d_temp;   d_temp="$(_cfg_get   monitors temp        true)"
+    local d_net;    d_net="$(_cfg_get    monitors net         true)"
     local d_twarn;  d_twarn="$(_cfg_get  alerts   temp_warn  80)"
     local d_cwarn;  d_cwarn="$(_cfg_get  alerts   cpu_warn   90)"
     local d_mwarn;  d_mwarn="$(_cfg_get  alerts   mem_warn   90)"
@@ -116,12 +118,14 @@ configure_interactive() {
     prompt      "LCD I2C address  (hex ok, e.g. 0x27 or 0x3f)" "$d_lcd"   LCD_ADDR
     prompt      "Button GPIO pin  (BCM numbering)"              "$d_btn"   BUTTON_PIN
     prompt      "Buzzer GPIO pin  (BCM numbering)"              "$d_buz"   BUZZER_PIN
+    prompt      "INA219 I2C address (hex ok, e.g. 0x40)"       "$d_ina"   INA219_ADDR
 
     h2 "Display"
     prompt      "Screen refresh interval in seconds"            "$d_ref"   REFRESH
 
     h2 "Monitors  (y = enable, n = disable)"
-    prompt_bool "Power / uptime monitor"                        "$d_power" ENABLE_POWER
+    prompt_bool "Boot / uptime monitor"                         "$d_boot"  ENABLE_BOOT
+    prompt_bool "Power / INA219 battery monitor"                "$d_power" ENABLE_POWER
     prompt_bool "CPU & memory monitor"                          "$d_cpu"   ENABLE_CPU
     prompt_bool "Temperature monitor"                           "$d_temp"  ENABLE_TEMP
     prompt_bool "Network monitor"                               "$d_net"   ENABLE_NET
@@ -133,8 +137,8 @@ configure_interactive() {
 }
 
 configure_noninteractive() {
-    LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; REFRESH="3"
-    ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"; ENABLE_NET="true"
+    LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; INA219_ADDR="0x40"; REFRESH="3"
+    ENABLE_BOOT="true"; ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"; ENABLE_NET="true"
     TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"
     info "Non-interactive — using all defaults"
 }
@@ -146,15 +150,17 @@ write_config() {
 # Re-run 1_install.sh to reconfigure, or edit this file directly.
 
 [monitors]
+boot  = ${ENABLE_BOOT}
 power = ${ENABLE_POWER}
 cpu   = ${ENABLE_CPU}
 temp  = ${ENABLE_TEMP}
 net   = ${ENABLE_NET}
 
 [hardware]
-lcd_addr   = ${LCD_ADDR}
-button_pin = ${BUTTON_PIN}
-buzzer_pin = ${BUZZER_PIN}
+lcd_addr    = ${LCD_ADDR}
+button_pin  = ${BUTTON_PIN}
+buzzer_pin  = ${BUZZER_PIN}
+ina219_addr = ${INA219_ADDR}
 
 [display]
 refresh = ${REFRESH}

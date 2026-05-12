@@ -10,18 +10,26 @@ import time
 from .interfaces.button import Button
 from .interfaces.buzzer import AlertChecker, Buzzer
 from .interfaces.lcd import LCD
-from .monitors import cpu_mem, network, power, temperature
+from .monitors import boot, cpu_mem, network, power, temperature
 
 
 # ---------------------------------------------------------------------------
 # Screen formatters — each returns (line1, line2) for the LCD
 # ---------------------------------------------------------------------------
 
-def _fmt_power(data: dict) -> tuple[str, str]:
+def _fmt_boot(data: dict) -> tuple[str, str]:
     uptime = data.get("uptime_s", 0)
     h, rem = divmod(int(uptime), 3600)
     m = rem // 60
-    return ("Power", f"Boot:{data.get('boot_count', 0)} {h}h{m:02d}m")
+    return ("Boot", f"#{data.get('boot_count', 0)} {h}h{m:02d}m")
+
+
+def _fmt_power(data: dict) -> tuple[str, str]:
+    source = data.get("power_source", "Unknown")
+    pct    = data.get("battery_pct", float("nan"))
+    if math.isnan(pct):
+        return ("Power", source)
+    return ("Power", f"{source} {pct:.0f}%")
 
 
 def _fmt_cpu(data: dict) -> tuple[str, str]:
@@ -64,6 +72,7 @@ def _bps_str(bps: float) -> str:
 # ---------------------------------------------------------------------------
 
 _MONITOR_DEFS = [
+    ("boot",  boot,        _fmt_boot),
     ("power", power,       _fmt_power),
     ("cpu",   cpu_mem,     _fmt_cpu),
     ("temp",  temperature, _fmt_temp),
@@ -200,7 +209,8 @@ def run(args: argparse.Namespace) -> None:
 
     signal.signal(signal.SIGTERM, _on_sigterm)
 
-    power.init()
+    boot.init()
+    power.init(addr=args.ina219_addr)
 
     lcd    = LCD(i2c_addr=args.lcd_addr)
     button = Button(pin=args.button_pin, long_press_ms=2000)

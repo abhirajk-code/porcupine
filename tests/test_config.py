@@ -151,6 +151,7 @@ def test_load_config_full_file(tmp_path):
 
 def test_parse_args_defaults_all_monitors_enabled(tmp_path):
     args = parse_args([], config_path=str(tmp_path / "none.conf"))
+    assert args.boot  is True
     assert args.power is True
     assert args.cpu   is True
     assert args.temp  is True

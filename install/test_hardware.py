@@ -12,6 +12,7 @@ Usage:
   python3 install/test_hardware.py buzzer
   python3 install/test_hardware.py button-short
   python3 install/test_hardware.py button-long
+  python3 install/test_hardware.py monitor-boot
   python3 install/test_hardware.py monitor-power
   python3 install/test_hardware.py monitor-cpu
   python3 install/test_hardware.py monitor-temp
@@ -42,9 +43,10 @@ def _load_cfg() -> dict:
             return default
 
     return {
-        "lcd_addr":   int(_get("hardware", "lcd_addr",   "0x27"), 0),
-        "button_pin": int(_get("hardware", "button_pin", "4")),
-        "buzzer_pin": int(_get("hardware", "buzzer_pin", "18")),
+        "lcd_addr":    int(_get("hardware", "lcd_addr",    "0x27"), 0),
+        "button_pin":  int(_get("hardware", "button_pin",  "4")),
+        "buzzer_pin":  int(_get("hardware", "buzzer_pin",  "18")),
+        "ina219_addr": int(_get("hardware", "ina219_addr", "0x40"), 0),
     }
 
 
@@ -186,14 +188,27 @@ def cmd_button(cfg: dict, expected: str) -> None:
 # Monitors
 # ---------------------------------------------------------------------------
 
-def cmd_monitor_power() -> None:
-    from porcupine.monitors import power
-    power.init(path="/var/lib/porcupine/bootcount")
-    data = power.read()
+def cmd_monitor_boot() -> None:
+    from porcupine.monitors import boot
+    boot.init(path="/var/lib/porcupine/bootcount")
+    data = boot.read()
     h, rem = divmod(int(data["uptime_s"]), 3600)
     m = rem // 60
     print(f"  Boot count : {data['boot_count']}")
     print(f"  Uptime     : {h}h {m:02d}m")
+
+
+def cmd_monitor_power(cfg: dict) -> None:
+    from porcupine.monitors.power import _HAS_SMBUS
+    if not _HAS_SMBUS:
+        print("Hardware not available: smbus/smbus2 not installed.", file=sys.stderr)
+        sys.exit(2)
+    from porcupine.monitors import power
+    power.init(addr=cfg["ina219_addr"])
+    data = power.read()
+    print(f"  Source      : {data['power_source']}")
+    pct = data["battery_pct"]
+    print(f"  Battery     : {pct:.1f}%" if pct == pct else "  Battery     : N/A")
 
 
 def cmd_monitor_cpu() -> None:
@@ -259,7 +274,8 @@ _COMMANDS = {
     "buzzer":        lambda cfg: cmd_buzzer(cfg),
     "button-short":  lambda cfg: cmd_button(cfg, "short"),
     "button-long":   lambda cfg: cmd_button(cfg, "long"),
-    "monitor-power": lambda cfg: cmd_monitor_power(),
+    "monitor-boot":  lambda cfg: cmd_monitor_boot(),
+    "monitor-power": lambda cfg: cmd_monitor_power(cfg),
     "monitor-cpu":   lambda cfg: cmd_monitor_cpu(),
     "monitor-temp":  lambda cfg: cmd_monitor_temp(),
     "monitor-net":   lambda cfg: cmd_monitor_net(),

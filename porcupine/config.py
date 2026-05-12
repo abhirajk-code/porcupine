@@ -4,7 +4,7 @@ import configparser
 
 DEFAULT_CONFIG_PATH = "/etc/porcupine/porcupine.conf"
 
-_MONITOR_FLAGS = ("power", "cpu", "temp", "net")
+_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net")
 
 
 def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
@@ -31,6 +31,8 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     for key in ("button_pin", "buzzer_pin"):
         if cp.has_option("hardware", key):
             result[key] = cp.getint("hardware", key)
+    if cp.has_option("hardware", "ina219_addr"):
+        result["ina219_addr"] = int(cp.get("hardware", "ina219_addr"), 0)
 
     # [display]
     if cp.has_option("display", "refresh"):
@@ -77,6 +79,12 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         default=file_cfg.get("lcd_addr", 0x27),
         metavar="ADDR",
         help="I2C address of the LCD (hex ok, e.g. 0x27)",
+    )
+    parser.add_argument(
+        "--ina219-addr", type=lambda x: int(x, 0),
+        default=file_cfg.get("ina219_addr", 0x40),
+        metavar="ADDR",
+        help="I2C address of the INA219 power monitor (hex ok, e.g. 0x40)",
     )
     parser.add_argument(
         "--button-pin", type=int,

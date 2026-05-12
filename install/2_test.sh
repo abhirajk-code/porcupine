@@ -122,7 +122,11 @@ sep "5 / 6 — Monitor readings"
 echo "  Reading all monitors once. Verify the values are plausible."
 echo
 
-echo "  [Power / uptime]"
+echo "  [Boot / uptime]"
+"$PY" "$TEST_PY" monitor-boot 2>/dev/null || echo "  (unavailable)"
+echo
+
+echo "  [Power / INA219]"
 "$PY" "$TEST_PY" monitor-power 2>/dev/null || echo "  (unavailable)"
 echo
 
