@@ -104,18 +104,20 @@ configure_interactive() {
     local d_btn;    d_btn="$(_cfg_get    hardware button_pin  4)"
     local d_buz;    d_buz="$(_cfg_get    hardware buzzer_pin  18)"
     local d_ina;    d_ina="$(_cfg_get    hardware ina219_addr 0x41)"
-    local d_ref;    d_ref="$(_cfg_get    display  refresh     3)"
-    local d_boot_ev;  d_boot_ev="$(_cfg_get  monitors boot_every  1)"
-    local d_power_ev; d_power_ev="$(_cfg_get monitors power_every 1)"
-    local d_cpu_ev;   d_cpu_ev="$(_cfg_get  monitors cpu_every   1)"
-    local d_temp_ev;  d_temp_ev="$(_cfg_get monitors temp_every  1)"
-    local d_net_ev;   d_net_ev="$(_cfg_get  monitors net_every   1)"
+    local d_ref;    d_ref="$(_cfg_get    display  refresh     5)"
+    local d_boot_ev;  d_boot_ev="$(_cfg_get  monitors boot_every  10)"
+    local d_power_ev; d_power_ev="$(_cfg_get monitors power_every  5)"
+    local d_cpu_ev;   d_cpu_ev="$(_cfg_get  monitors cpu_every    5)"
+    local d_temp_ev;  d_temp_ev="$(_cfg_get monitors temp_every   1)"
+    local d_net_ev;   d_net_ev="$(_cfg_get  monitors net_every   10)"
+    local d_gpio_ev;  d_gpio_ev="$(_cfg_get monitors gpio_every   2)"
     # Convert cycle value to bool default for the yes/no prompt (0 = disabled)
     local d_boot;   [[ "$d_boot_ev"  != "0" ]] && d_boot="true"  || d_boot="false"
     local d_power;  [[ "$d_power_ev" != "0" ]] && d_power="true" || d_power="false"
     local d_cpu;    [[ "$d_cpu_ev"   != "0" ]] && d_cpu="true"   || d_cpu="false"
     local d_temp;   [[ "$d_temp_ev"  != "0" ]] && d_temp="true"  || d_temp="false"
     local d_net;    [[ "$d_net_ev"   != "0" ]] && d_net="true"   || d_net="false"
+    local d_gpio;   [[ "$d_gpio_ev"  != "0" ]] && d_gpio="true"  || d_gpio="false"
     local d_twarn;  d_twarn="$(_cfg_get  alerts   temp_warn  80)"
     local d_cwarn;  d_cwarn="$(_cfg_get  alerts   cpu_warn   90)"
     local d_mwarn;  d_mwarn="$(_cfg_get  alerts   mem_warn   90)"
@@ -135,6 +137,7 @@ configure_interactive() {
     prompt_bool "CPU & memory monitor"                          "$d_cpu"   ENABLE_CPU
     prompt_bool "Temperature monitor"                           "$d_temp"  ENABLE_TEMP
     prompt_bool "Network monitor"                               "$d_net"   ENABLE_NET
+    prompt_bool "GPIO 40-pin header monitor"                    "$d_gpio"  ENABLE_GPIO
 
     h2 "Alert thresholds"
     prompt "CPU temperature warning (°C)"                       "$d_twarn" TEMP_WARN
@@ -144,19 +147,21 @@ configure_interactive() {
 
 configure_noninteractive() {
     LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; INA219_ADDR="0x41"; REFRESH="5"
-    ENABLE_BOOT="true"; ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"; ENABLE_NET="true"
+    ENABLE_BOOT="true"; ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"
+    ENABLE_NET="true"; ENABLE_GPIO="true"
     TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"
     info "Non-interactive — using all defaults"
 }
 
 write_config() {
-    # Convert enable/disable booleans to cycle frequency (1=enabled, 0=disabled)
-    local be pe ce te ne
-    [[ "$ENABLE_BOOT"  == "true" ]] && be=1 || be=0
-    [[ "$ENABLE_POWER" == "true" ]] && pe=1 || pe=0
-    [[ "$ENABLE_CPU"   == "true" ]] && ce=1 || ce=0
-    [[ "$ENABLE_TEMP"  == "true" ]] && te=1 || te=0
-    [[ "$ENABLE_NET"   == "true" ]] && ne=1 || ne=0
+    # Convert enable/disable booleans to cycle frequency (0=disabled, else default freq)
+    local be pe ce te ne ge
+    [[ "$ENABLE_BOOT"  == "true" ]] && be=10 || be=0
+    [[ "$ENABLE_POWER" == "true" ]] && pe=5  || pe=0
+    [[ "$ENABLE_CPU"   == "true" ]] && ce=5  || ce=0
+    [[ "$ENABLE_TEMP"  == "true" ]] && te=1  || te=0
+    [[ "$ENABLE_NET"   == "true" ]] && ne=10 || ne=0
+    [[ "$ENABLE_GPIO"  == "true" ]] && ge=2  || ge=0
 
     mkdir -p "$CONFIG_DIR"
     cat > "$CONFIG_FILE" <<EOF
@@ -169,6 +174,7 @@ power_every = ${pe}
 cpu_every   = ${ce}
 temp_every  = ${te}
 net_every   = ${ne}
+gpio_every  = ${ge}
 
 [hardware]
 lcd_addr    = ${LCD_ADDR}

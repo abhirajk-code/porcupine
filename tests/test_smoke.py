@@ -244,7 +244,7 @@ def test_step1_writes_all_config_keys():
     text = step1.read_text()
     for key in ("lcd_addr", "button_pin", "buzzer_pin", "ina219_addr", "refresh",
                 "temp_warn", "cpu_warn", "mem_warn",
-                "boot_every", "power_every", "cpu_every", "temp_every", "net_every"):
+                "boot_every", "power_every", "cpu_every", "temp_every", "net_every", "gpio_every"):
         assert key in text, f"install.sh must write config key: {key}"
 
 
