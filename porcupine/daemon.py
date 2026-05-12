@@ -1,5 +1,6 @@
 """Main event loop — wires monitors to interfaces."""
 import argparse
+import logging
 import math
 import queue
 import signal
@@ -18,25 +19,19 @@ from .monitors import boot, cpu_mem, network, power, temperature
 # ---------------------------------------------------------------------------
 
 def _fmt_boot(data: dict) -> tuple[str, str]:
-    uptime = data.get("uptime_s", 0)
-    h, rem = divmod(int(uptime), 3600)
-    m = rem // 60
-    return ("Boot", f"#{data.get('boot_count', 0)} {h}h{m:02d}m")
+    uptime = int(data.get("uptime_s", 0))
+    return "Boot", f"#{data.get('boot_count', 0)} {uptime // 3600}h{uptime % 3600 // 60:02d}m"
 
 
 def _fmt_power(data: dict) -> tuple[str, str]:
     source = data.get("power_source", "Unknown")
-    pct    = data.get("battery_pct", float("nan"))
-    if math.isnan(pct):
-        return ("Power", source)
-    return ("Power", f"{source} {pct:.0f}%")
+    pct = data.get("battery_pct", float("nan"))
+    suffix = f" {pct:.0f}%" if not math.isnan(pct) else ""
+    return "Power", f"{source}{suffix}"
 
 
 def _fmt_cpu(data: dict) -> tuple[str, str]:
-    return (
-        "CPU      Mem",
-        f"{data.get('cpu_avg_pct', 0):.0f}%      {data.get('mem_pct', 0):.0f}%",
-    )
+    return "CPU      Mem", f"{data.get('cpu_avg_pct', 0):.0f}%      {data.get('mem_pct', 0):.0f}%"
 
 
 def _fmt_temp(data: dict) -> tuple[str, str]:
@@ -53,10 +48,10 @@ def _fmt_temp(data: dict) -> tuple[str, str]:
 
 
 def _fmt_net(data: dict) -> tuple[str, str]:
-    iface = data.get("interface", "???")[:5]
-    rx = _bps_str(data.get("rx_bps", 0))
-    tx = _bps_str(data.get("tx_bps", 0))
-    return (f"Net {iface}", f"RX:{rx} TX:{tx}")
+    return (
+        f"Net {data.get('interface', '???')[:5]}",
+        f"RX:{_bps_str(data.get('rx_bps', 0))} TX:{_bps_str(data.get('tx_bps', 0))}",
+    )
 
 
 def _bps_str(bps: float) -> str:
@@ -88,7 +83,7 @@ def _read_all(args: argparse.Namespace) -> dict:
             try:
                 merged.update(module.read())
             except Exception:
-                pass
+                logging.warning("monitor %r read failed", flag, exc_info=True)
     return merged
 
 

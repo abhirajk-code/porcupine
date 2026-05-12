@@ -192,10 +192,7 @@ class AlertChecker:
         temp = data.get("cpu_temp_c")
         if temp is None or (isinstance(temp, float) and math.isnan(temp)):
             return
-        if temp > self._temp_warn:
-            self._fire_once(self._TEMP, self._buzzer.alert_temp)
-        else:
-            self._alerted.discard(self._TEMP)
+        self._toggle(self._TEMP, temp > self._temp_warn, self._buzzer.alert_temp)
 
     def _check_cpu(self, data: dict) -> None:
         cpu_avg = data.get("cpu_avg_pct")
@@ -215,19 +212,19 @@ class AlertChecker:
         mem_pct = data.get("mem_pct")
         if mem_pct is None:
             return
-        if mem_pct > self._mem_warn:
-            self._fire_once(self._MEM, self._buzzer.alert_mem)
-        else:
-            self._alerted.discard(self._MEM)
+        self._toggle(self._MEM, mem_pct > self._mem_warn, self._buzzer.alert_mem)
 
     def _check_net(self, data: dict) -> None:
         iface = data.get("interface")
         if iface is None:
             return
-        if iface == "lo":
-            self._fire_once(self._NET, self._buzzer.alert_net)
+        self._toggle(self._NET, iface == "lo", self._buzzer.alert_net)
+
+    def _toggle(self, key: str, active: bool, alert_fn: Callable) -> None:
+        if active:
+            self._fire_once(key, alert_fn)
         else:
-            self._alerted.discard(self._NET)
+            self._alerted.discard(key)
 
     def _fire_once(self, key: str, alert_fn: Callable) -> None:
         if key not in self._alerted:
