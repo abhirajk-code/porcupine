@@ -76,10 +76,12 @@ cmd_status() {
 
     printf "\nMonitors:\n"
     printf "  %-10s %s\n" "monitor" "every (0=off)"
-    for m in boot power cpu temp net gpio; do
-        printf "  %-10s %s\n" "$m" \
-            "$(cfg_get monitors "${m}_every" 1)"
-    done
+    printf "  %-10s %s\n" "boot"  "$(cfg_get monitors boot_every  10)"
+    printf "  %-10s %s\n" "power" "$(cfg_get monitors power_every  5)"
+    printf "  %-10s %s\n" "cpu"   "$(cfg_get monitors cpu_every    5)"
+    printf "  %-10s %s\n" "temp"  "$(cfg_get monitors temp_every   1)"
+    printf "  %-10s %s\n" "net"   "$(cfg_get monitors net_every   10)"
+    printf "  %-10s %s\n" "gpio"  "$(cfg_get monitors gpio_every   2)"
 
     printf "\nHardware:\n"
     printf "  %-14s %s\n" "lcd_addr"    "$(cfg_get hardware lcd_addr    0x27)"
