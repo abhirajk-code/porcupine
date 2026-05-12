@@ -39,7 +39,7 @@ class Button:
         self._long_press_s = long_press_ms / 1000.0
         self._debounce_ms = debounce_ms
         self._press_time: float | None = None
-        self._press_start_cb: Callable | None = None
+        self._press_start_cbs: list[Callable] = []
         self._short_cb: Callable | None = None
         self._long_cb: Callable | None = None
         self._held_cb: Callable | None = None
@@ -63,7 +63,7 @@ class Button:
 
     def on_press_start(self, callback: Callable) -> None:
         """Fires immediately on button-down — before release classification."""
-        self._press_start_cb = callback
+        self._press_start_cbs.append(callback)
 
     def on_short_press(self, callback: Callable) -> None:
         self._short_cb = callback
@@ -147,8 +147,8 @@ class Button:
 
     def _on_press_start(self) -> None:
         self._press_time = time.monotonic()
-        if self._press_start_cb is not None:
-            self._press_start_cb()
+        for cb in self._press_start_cbs:
+            cb()
         if self._held_cb is not None:
             self._held_timer = threading.Timer(self._long_press_s, self._fire_held)
             self._held_timer.start()
