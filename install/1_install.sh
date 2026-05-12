@@ -219,6 +219,18 @@ PORCUPINE_BIN="$VENV_DIR/bin/porcupine"
 ok "Package installed → $PORCUPINE_BIN"
 
 # ---------------------------------------------------------------------------
+# Install management CLI
+# ---------------------------------------------------------------------------
+cp "$SCRIPT_DIR/porcupine" /usr/local/bin/porcupine
+chmod +x /usr/local/bin/porcupine
+ok "Management CLI installed → /usr/local/bin/porcupine"
+
+# Copy test assets so 'porcupine test' works independently of the source tree
+cp "$SCRIPT_DIR/test_hardware.py" /opt/porcupine/test_hardware.py
+cp "$SCRIPT_DIR/2_test.sh"        /opt/porcupine/2_test.sh
+ok "Test assets installed → /opt/porcupine/"
+
+# ---------------------------------------------------------------------------
 # Install service template (but do NOT enable/start yet)
 # ---------------------------------------------------------------------------
 sed "s|@@PORCUPINE_BIN@@|${PORCUPINE_BIN}|g" \
@@ -230,4 +242,5 @@ echo
 echo "============================================"
 echo " Step 1 complete!"
 echo " Next: sudo bash $SCRIPT_DIR/2_test.sh"
+echo "   or: sudo porcupine test"
 echo "============================================"

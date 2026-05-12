@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# porcupine — management CLI for the porcupine system monitor service
+
+set -euo pipefail
+
+CONF=/etc/porcupine/porcupine.conf
+SERVICE=porcupine
+TEST_SH=/opt/porcupine/2_test.sh
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+die()       { echo "error: $*" >&2; exit 1; }
+need_root() { [[ ${EUID:-$(id -u)} -eq 0 ]] || die "run as root: sudo porcupine $*"; }
+
+cfg_get() {
+    local section=$1 key=$2 default=${3:-}
+    [[ -f $CONF ]] || { printf '%s' "$default"; return; }
+    python3 - "$section" "$key" "$default" "$CONF" <<'PY'
+import configparser, sys
+s, k, d, p = sys.argv[1:]
+cp = configparser.ConfigParser()
+cp.read(p)
+print(cp.get(s, k, fallback=d))
+PY
+}
+
+cfg_set() {
+    local section=$1 key=$2 value=$3
+    python3 - "$section" "$key" "$value" "$CONF" <<'PY'
+import configparser, sys
+s, k, v, p = sys.argv[1:]
+cp = configparser.ConfigParser()
+cp.read(p)
+if not cp.has_section(s):
+    cp.add_section(s)
+cp.set(s, k, v)
+with open(p, 'w') as f:
+    cp.write(f)
+PY
+}
+
+_restart_if_running() {
+    if systemctl is-active --quiet $SERVICE 2>/dev/null; then
+        systemctl restart $SERVICE
+        echo "service restarted"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+cmd_start() {
+    need_root start
+    systemctl start $SERVICE
+    echo "started"
+}
+
+cmd_stop() {
+    need_root stop
+    systemctl stop $SERVICE
+    echo "stopped"
+}
+
+cmd_status() {
+    local svc_state
+    if systemctl is-active --quiet $SERVICE 2>/dev/null; then
+        svc_state=running
+    else
+        svc_state=stopped
+    fi
+
+    printf "Service:  %s\n" "$svc_state"
+    printf "Config:   %s\n" "$CONF"
+
+    printf "\nMonitors:\n"
+    for m in boot power cpu temp net; do
+        printf "  %-10s %s\n" "$m" "$(cfg_get monitors "$m" true)"
+    done
+
+    printf "\nHardware:\n"
+    printf "  %-14s %s\n" "lcd_addr"    "$(cfg_get hardware lcd_addr    0x27)"
+    printf "  %-14s %s\n" "ina219_addr" "$(cfg_get hardware ina219_addr 0x41)"
+    printf "  %-14s %s\n" "button_pin"  "$(cfg_get hardware button_pin  4)"
+    printf "  %-14s %s\n" "buzzer_pin"  "$(cfg_get hardware buzzer_pin  18)"
+
+    printf "\nDisplay:\n"
+    printf "  %-14s %s\n" "refresh"     "$(cfg_get display refresh 3.0)"
+
+    printf "\nAlerts:\n"
+    printf "  %-14s %s\n" "temp_warn"   "$(cfg_get alerts temp_warn 80.0)"
+    printf "  %-14s %s\n" "cpu_warn"    "$(cfg_get alerts cpu_warn  90.0)"
+    printf "  %-14s %s\n" "mem_warn"    "$(cfg_get alerts mem_warn  90.0)"
+}
+
+cmd_test() {
+    [[ -f $TEST_SH ]] || die "test script not found at $TEST_SH — re-run Step 1 to reinstall"
+    bash "$TEST_SH"
+}
+
+cmd_enable_disable() {
+    local action=$1 monitor=$2
+    need_root "$action $monitor"
+    case $monitor in
+        boot|power|cpu|temp|net) ;;
+        *) die "unknown monitor '$monitor' — choose from: boot power cpu temp net";;
+    esac
+    local val; [[ $action == enable ]] && val=true || val=false
+    cfg_set monitors "$monitor" "$val"
+    echo "$monitor ${action}d"
+    _restart_if_running
+}
+
+cmd_set() {
+    [[ $# -ge 2 ]] || die "usage: porcupine set <param> <value>"
+    local param=$1 value=$2
+    need_root "set $param $value"
+    case $param in
+        refresh)     cfg_set display  refresh     "$value";;
+        temp-warn)   cfg_set alerts   temp_warn   "$value";;
+        cpu-warn)    cfg_set alerts   cpu_warn    "$value";;
+        mem-warn)    cfg_set alerts   mem_warn    "$value";;
+        lcd-addr)    cfg_set hardware lcd_addr    "$value";;
+        ina219-addr) cfg_set hardware ina219_addr "$value";;
+        button-pin)  cfg_set hardware button_pin  "$value";;
+        buzzer-pin)  cfg_set hardware buzzer_pin  "$value";;
+        *) die "unknown parameter '$param' — supported: refresh temp-warn cpu-warn mem-warn lcd-addr ina219-addr button-pin buzzer-pin";;
+    esac
+    echo "$param = $value"
+    _restart_if_running
+}
+
+usage() {
+    cat <<'EOF'
+Usage: porcupine <command> [args]
+
+Commands:
+  start                    Start the monitoring service
+  stop                     Stop the monitoring service
+  status                   Show service state and current configuration
+  test                     Run hardware tests (interactive)
+
+  enable  <monitor>        Enable a monitor  (boot|power|cpu|temp|net)
+  disable <monitor>        Disable a monitor (boot|power|cpu|temp|net)
+
+  set refresh <seconds>    Time between display pages
+  set temp-warn <°C>       CPU temperature warning threshold
+  set cpu-warn <%>         CPU usage warning threshold
+  set mem-warn <%>         Memory usage warning threshold
+  set lcd-addr <hex>       LCD I2C address       (e.g. 0x27)
+  set ina219-addr <hex>    INA219 I2C address    (e.g. 0x41)
+  set button-pin <n>       Button GPIO pin (BCM)
+  set buzzer-pin <n>       Buzzer GPIO pin (BCM)
+
+Changes to monitors and settings take effect immediately if the service
+is running (it is restarted automatically).
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+cmd=${1:-}
+shift || true
+
+case $cmd in
+    start)   cmd_start ;;
+    stop)    cmd_stop ;;
+    status)  cmd_status ;;
+    test)    cmd_test ;;
+    enable)
+        [[ -n ${1:-} ]] || die "usage: porcupine enable <monitor>"
+        cmd_enable_disable enable "$1"
+        ;;
+    disable)
+        [[ -n ${1:-} ]] || die "usage: porcupine disable <monitor>"
+        cmd_enable_disable disable "$1"
+        ;;
+    set)
+        cmd_set "$@"
+        ;;
+    help|--help|-h|"")
+        usage ;;
+    *)
+        die "unknown command '$cmd' — run 'porcupine help'" ;;
+esac
