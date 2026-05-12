@@ -141,12 +141,12 @@ class _ButtonController:
             self._window_timer.start()
         elif self._state == "after_second_start":
             self._begin_countdown("reboot")
+        elif self._state == "counting":
+            self._cancel.set()
 
     def _on_long(self) -> None:
         if self._state == "after_second_start":
             self._begin_countdown("shutdown")
-        elif self._state == "counting":
-            self._cancel.set()
 
     def _window_expired(self) -> None:
         self._state = "idle"
@@ -169,8 +169,8 @@ class _ButtonController:
             self._monitoring = True
             self._lcd.resume()
         self._cancel.clear()
-        line1 = "Rebooting..." if action == "reboot" else "Shutting down"
-        self._lcd.enter_menu(line1, f"{self._COUNTDOWN_S}s  Long:cancel")
+        line1 = "Rebooting..." if action == "reboot" else "Shutdown"
+        self._lcd.enter_menu(line1, f"{self._COUNTDOWN_S}s  Press:cancel")
         threading.Thread(
             target=self._countdown_loop, args=(action, line1), daemon=True
         ).start()
@@ -183,7 +183,7 @@ class _ButtonController:
                 self._lcd.exit_menu()
                 self._state = "idle"
                 return
-            self._lcd.update_menu(line1, f"{remaining}s  Long:cancel")
+            self._lcd.update_menu(line1, f"{remaining}s  Press:cancel")
         if action == "reboot":
             subprocess.run(["sudo", "reboot"], check=False)
         else:
