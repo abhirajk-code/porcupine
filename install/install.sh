@@ -143,7 +143,7 @@ configure_interactive() {
 }
 
 configure_noninteractive() {
-    LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; INA219_ADDR="0x41"; REFRESH="3"
+    LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; INA219_ADDR="0x41"; REFRESH="5"
     ENABLE_BOOT="true"; ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"; ENABLE_NET="true"
     TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"
     info "Non-interactive — using all defaults"

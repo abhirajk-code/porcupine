@@ -6,6 +6,15 @@ DEFAULT_CONFIG_PATH = "/etc/porcupine/porcupine.conf"
 
 _MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net", "gpio")
 
+_MONITOR_DEFAULTS = {
+    "boot":  10,
+    "power":  5,
+    "cpu":    5,
+    "temp":   1,
+    "net":   10,
+    "gpio":   2,
+}
+
 
 def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     """
@@ -68,9 +77,9 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         parser.add_argument(
             f"--{flag}-every",
             type=int,
-            default=file_cfg.get(f"{flag}_every", 1),
+            default=file_cfg.get(f"{flag}_every", _MONITOR_DEFAULTS[flag]),
             metavar="N",
-            help=f"Show {flag} screen every Nth cycle; 0 disables (default 1)",
+            help=f"Show {flag} screen every Nth cycle; 0 disables (default {_MONITOR_DEFAULTS[flag]})",
         )
 
     # Numeric flags: config file values become the parser defaults so CLI

@@ -5,12 +5,12 @@
 [monitors]
 # How often each monitor appears in the display cycle.
 # 0 = disabled, 1 = every cycle (default), 2 = every other cycle, 5 = every 5th cycle, etc.
-boot_every  = 1
-power_every = 1
-cpu_every   = 1
+boot_every  = 10
+power_every = 5
+cpu_every   = 5
 temp_every  = 1
-net_every   = 1
-gpio_every  = 1
+net_every   = 10
+gpio_every  = 2
 
 [hardware]
 # I2C address of the LCD backpack (PCF8574). Use hex (0x27) or decimal (39).
