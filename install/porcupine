@@ -99,6 +99,15 @@ cmd_test() {
     bash "$TEST_SH"
 }
 
+cmd_showlogs() {
+    local level=${1:-}
+    case $level in
+        error) journalctl -u $SERVICE -p warning ;;
+        all)   journalctl -u $SERVICE ;;
+        *)     die "usage: porcupine showlogs <error|all>" ;;
+    esac
+}
+
 cmd_enable_disable() {
     local action=$1 monitor=$2
     need_root "$action $monitor"
@@ -153,6 +162,9 @@ Commands:
   set button-pin <n>       Button GPIO pin (BCM)
   set buzzer-pin <n>       Buzzer GPIO pin (BCM)
 
+  showlogs error           Show warnings and errors from the service journal
+  showlogs all             Show full service journal
+
 Changes to monitors and settings take effect immediately if the service
 is running (it is restarted automatically).
 EOF
@@ -179,6 +191,10 @@ case $cmd in
         ;;
     set)
         cmd_set "$@"
+        ;;
+    showlogs)
+        [[ -n ${1:-} ]] || die "usage: porcupine showlogs <error|all>"
+        cmd_showlogs "$1"
         ;;
     help|--help|-h|"")
         usage ;;
