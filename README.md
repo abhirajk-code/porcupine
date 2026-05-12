@@ -37,11 +37,22 @@ After installation the `porcupine` command is available system-wide.
 
 ### Monitors
 
-Enable or disable individual data screens on the LCD display.
+Each monitor has a cycle frequency that controls how often it appears in the display rotation.
 
 ```bash
-sudo porcupine enable  <monitor>   # boot | power | cpu | temp | net
-sudo porcupine disable <monitor>
+sudo porcupine set boot-every  <n>   # 0 = disabled, 1 = every cycle (default), N = every Nth cycle
+sudo porcupine set power-every <n>
+sudo porcupine set cpu-every   <n>
+sudo porcupine set temp-every  <n>
+sudo porcupine set net-every   <n>
+sudo porcupine set gpio-every  <n>
+```
+
+The `enable` / `disable` shortcuts set the frequency to `1` or `0`:
+
+```bash
+sudo porcupine enable  <monitor>   # sets {monitor}_every = 1
+sudo porcupine disable <monitor>   # sets {monitor}_every = 0
 ```
 
 ### Settings
@@ -50,7 +61,7 @@ All `set` commands require `sudo` and restart the service automatically if it is
 
 | Command | Description | Default |
 |---|---|---|
-| `sudo porcupine set refresh <seconds>` | Time between display pages | `3.0` |
+| `sudo porcupine set refresh <seconds>` | Time between display pages | `5.0` |
 | `sudo porcupine set temp-warn <°C>` | CPU temperature alert threshold | `80.0` |
 | `sudo porcupine set cpu-warn <%>` | CPU usage alert threshold | `90.0` |
 | `sudo porcupine set mem-warn <%>` | Memory usage alert threshold | `90.0` |
