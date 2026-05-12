@@ -151,11 +151,12 @@ def test_load_config_full_file(tmp_path):
 
 def test_parse_args_defaults_all_monitors_enabled(tmp_path):
     args = parse_args([], config_path=str(tmp_path / "none.conf"))
-    assert args.boot_every  == 1
-    assert args.power_every == 1
-    assert args.cpu_every   == 1
+    assert args.boot_every  == 10
+    assert args.power_every == 5
+    assert args.cpu_every   == 5
     assert args.temp_every  == 1
-    assert args.net_every   == 1
+    assert args.net_every   == 10
+    assert args.gpio_every  == 2
 
 
 def test_parse_args_defaults_numeric_values(tmp_path):
@@ -176,7 +177,7 @@ def test_parse_args_defaults_numeric_values(tmp_path):
 def test_parse_args_cli_monitor_flags(tmp_path):
     args = parse_args(["--cpu-every", "0", "--temp-every", "0", "--net-every", "0"],
                       config_path=str(tmp_path / "none.conf"))
-    assert args.power_every == 1   # unchanged default
+    assert args.power_every == 5   # unchanged default
     assert args.cpu_every   == 0
     assert args.temp_every  == 0
     assert args.net_every   == 0

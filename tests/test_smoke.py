@@ -83,7 +83,12 @@ def test_help_lists_config_flag():
 def test_parse_args_defaults_without_config(tmp_path):
     from porcupine.config import parse_args
     args = parse_args([], config_path=str(tmp_path / "none.conf"))
-    assert all(getattr(args, f"{m}_every") == 1 for m in ("boot", "power", "cpu", "temp", "net"))
+    assert args.boot_every  == 10
+    assert args.power_every == 5
+    assert args.cpu_every   == 5
+    assert args.temp_every  == 1
+    assert args.net_every   == 10
+    assert args.gpio_every  == 2
     assert args.lcd_addr   == 0x27
     assert args.button_pin == 4
     assert args.buzzer_pin == 18
@@ -94,7 +99,7 @@ def test_parse_args_no_power_flag(tmp_path):
     from porcupine.config import parse_args
     args = parse_args(["--power-every", "0"], config_path=str(tmp_path / "none.conf"))
     assert args.power_every == 0
-    assert args.cpu_every   == 1
+    assert args.cpu_every   == 5
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +110,7 @@ def test_sample_config_parses_without_error():
     from porcupine.config import load_config
     example = Path(__file__).parent.parent / "install" / "porcupine.conf.example"
     cfg = load_config(str(example))
-    assert cfg.get("boot_every") == 1
+    assert cfg.get("boot_every") == 10
     assert cfg.get("lcd_addr") == 0x27
     assert cfg.get("refresh") == pytest.approx(5.0)
     assert cfg.get("temp_warn") == pytest.approx(80.0)
