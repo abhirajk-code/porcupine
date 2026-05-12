@@ -9,3 +9,4 @@ build/
 .env
 doorLock.py
 porcupine_sysinfo.txt
+scratchpad/
