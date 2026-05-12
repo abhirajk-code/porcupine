@@ -75,8 +75,11 @@ cmd_status() {
     printf "Config:   %s\n" "$CONF"
 
     printf "\nMonitors:\n"
-    for m in boot power cpu temp net; do
-        printf "  %-10s %s\n" "$m" "$(cfg_get monitors "$m" true)"
+    printf "  %-10s %-8s %s\n" "monitor" "enabled" "every"
+    for m in boot power cpu temp net gpio; do
+        printf "  %-10s %-8s %s\n" "$m" \
+            "$(cfg_get monitors "$m" true)" \
+            "$(cfg_get monitors "${m}_every" 1)"
     done
 
     printf "\nHardware:\n"
@@ -86,7 +89,7 @@ cmd_status() {
     printf "  %-14s %s\n" "buzzer_pin"  "$(cfg_get hardware buzzer_pin  18)"
 
     printf "\nDisplay:\n"
-    printf "  %-14s %s\n" "refresh"     "$(cfg_get display refresh 3.0)"
+    printf "  %-14s %s\n" "refresh"     "$(cfg_get display refresh 5.0)"
 
     printf "\nAlerts:\n"
     printf "  %-14s %s\n" "temp_warn"   "$(cfg_get alerts temp_warn 80.0)"
@@ -126,15 +129,21 @@ cmd_set() {
     local param=$1 value=$2
     need_root "set $param $value"
     case $param in
-        refresh)     cfg_set display  refresh     "$value";;
-        temp-warn)   cfg_set alerts   temp_warn   "$value";;
-        cpu-warn)    cfg_set alerts   cpu_warn    "$value";;
-        mem-warn)    cfg_set alerts   mem_warn    "$value";;
-        lcd-addr)    cfg_set hardware lcd_addr    "$value";;
-        ina219-addr) cfg_set hardware ina219_addr "$value";;
-        button-pin)  cfg_set hardware button_pin  "$value";;
-        buzzer-pin)  cfg_set hardware buzzer_pin  "$value";;
-        *) die "unknown parameter '$param' — supported: refresh temp-warn cpu-warn mem-warn lcd-addr ina219-addr button-pin buzzer-pin";;
+        refresh)          cfg_set display  refresh       "$value";;
+        temp-warn)        cfg_set alerts   temp_warn     "$value";;
+        cpu-warn)         cfg_set alerts   cpu_warn      "$value";;
+        mem-warn)         cfg_set alerts   mem_warn      "$value";;
+        lcd-addr)         cfg_set hardware lcd_addr      "$value";;
+        ina219-addr)      cfg_set hardware ina219_addr   "$value";;
+        button-pin)       cfg_set hardware button_pin    "$value";;
+        buzzer-pin)       cfg_set hardware buzzer_pin    "$value";;
+        boot-every)       cfg_set monitors boot_every    "$value";;
+        power-every)      cfg_set monitors power_every   "$value";;
+        cpu-every)        cfg_set monitors cpu_every     "$value";;
+        temp-every)       cfg_set monitors temp_every    "$value";;
+        net-every)        cfg_set monitors net_every     "$value";;
+        gpio-every)       cfg_set monitors gpio_every    "$value";;
+        *) die "unknown parameter '$param' — run 'porcupine help' for supported params";;
     esac
     echo "$param = $value"
     _restart_if_running
@@ -153,7 +162,7 @@ Commands:
   enable  <monitor>        Enable a monitor  (boot|power|cpu|temp|net|gpio)
   disable <monitor>        Disable a monitor (boot|power|cpu|temp|net|gpio)
 
-  set refresh <seconds>    Time between display pages
+  set refresh <seconds>    Time between display pages (default 5)
   set temp-warn <°C>       CPU temperature warning threshold
   set cpu-warn <%>         CPU usage warning threshold
   set mem-warn <%>         Memory usage warning threshold
@@ -161,6 +170,13 @@ Commands:
   set ina219-addr <hex>    INA219 I2C address    (e.g. 0x41)
   set button-pin <n>       Button GPIO pin (BCM)
   set buzzer-pin <n>       Buzzer GPIO pin (BCM)
+
+  set boot-every  <n>      Show boot screen every Nth cycle  (default 1)
+  set power-every <n>      Show power screen every Nth cycle
+  set cpu-every   <n>      Show cpu screen every Nth cycle
+  set temp-every  <n>      Show temp screen every Nth cycle
+  set net-every   <n>      Show net screen every Nth cycle
+  set gpio-every  <n>      Show gpio screen every Nth cycle
 
   showlogs error           Show warnings and errors from the service journal
   showlogs all             Show full service journal

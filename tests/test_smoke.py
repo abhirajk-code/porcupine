@@ -87,7 +87,7 @@ def test_parse_args_defaults_without_config(tmp_path):
     assert args.lcd_addr   == 0x27
     assert args.button_pin == 4
     assert args.buzzer_pin == 18
-    assert args.refresh    == pytest.approx(3.0)
+    assert args.refresh    == pytest.approx(5.0)
 
 
 def test_parse_args_no_power_flag(tmp_path):
@@ -107,7 +107,7 @@ def test_sample_config_parses_without_error():
     cfg = load_config(str(example))
     assert cfg.get("boot") is True
     assert cfg.get("lcd_addr") == 0x27
-    assert cfg.get("refresh") == pytest.approx(3.0)
+    assert cfg.get("refresh") == pytest.approx(5.0)
     assert cfg.get("temp_warn") == pytest.approx(80.0)
 
 

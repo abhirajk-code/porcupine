@@ -24,6 +24,9 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     for flag in _MONITOR_FLAGS:
         if cp.has_option("monitors", flag):
             result[flag] = cp.getboolean("monitors", flag)
+        every_key = f"{flag}_every"
+        if cp.has_option("monitors", every_key):
+            result[every_key] = cp.getint("monitors", every_key)
 
     # [hardware]
     if cp.has_option("hardware", "lcd_addr"):
@@ -71,6 +74,13 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
             default=None,
             help=f"Enable or disable the {flag} monitor",
         )
+        parser.add_argument(
+            f"--{flag}-every",
+            type=int,
+            default=file_cfg.get(f"{flag}_every", 1),
+            metavar="N",
+            help=f"Show {flag} screen every Nth cycle (default 1)",
+        )
 
     # Numeric flags: config file values become the parser defaults so CLI
     # overrides them transparently.
@@ -98,7 +108,7 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
     )
     parser.add_argument(
         "--refresh", type=float,
-        default=file_cfg.get("refresh", 3.0),
+        default=file_cfg.get("refresh", 5.0),
         metavar="SECS",
         help="Screen refresh interval in seconds",
     )

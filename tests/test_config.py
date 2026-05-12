@@ -163,7 +163,7 @@ def test_parse_args_defaults_numeric_values(tmp_path):
     assert args.lcd_addr   == 0x27
     assert args.button_pin == 4
     assert args.buzzer_pin == 18
-    assert args.refresh    == pytest.approx(3.0)
+    assert args.refresh    == pytest.approx(5.0)
     assert args.temp_warn  == pytest.approx(80.0)
     assert args.cpu_warn   == pytest.approx(90.0)
     assert args.mem_warn   == pytest.approx(90.0)
@@ -288,4 +288,4 @@ def test_parse_args_config_flag_selects_file(tmp_path):
 def test_parse_args_config_flag_missing_file_uses_defaults(tmp_path):
     missing = str(tmp_path / "ghost.conf")
     args = parse_args(["--config", missing])
-    assert args.refresh == pytest.approx(3.0)  # hardcoded default
+    assert args.refresh == pytest.approx(5.0)  # hardcoded default
