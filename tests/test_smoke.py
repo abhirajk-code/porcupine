@@ -248,7 +248,7 @@ def test_step1_writes_all_config_keys():
         assert key in text, f"install.sh must write config key: {key}"
 
 
-def test_step2_tests_all_interfaces():
+def test_test_sh_tests_all_interfaces():
     step2 = Path(__file__).parent.parent / "install" / "test.sh"
     text = step2.read_text()
     for subcmd in ("lcd", "buzzer", "button-short", "button-long",
@@ -256,7 +256,7 @@ def test_step2_tests_all_interfaces():
         assert subcmd in text, f"test.sh must invoke test_hardware.py {subcmd}"
 
 
-def test_step3_enables_service():
+def test_enable_sh_enables_service():
     step3 = Path(__file__).parent.parent / "install" / "enable.sh"
     text = step3.read_text()
     assert "systemctl enable" in text

@@ -124,10 +124,12 @@ def test_load_config_reads_alert_thresholds(tmp_path):
 def test_load_config_full_file(tmp_path):
     path = write_conf(tmp_path, """
         [monitors]
-        power = true
-        cpu   = true
-        temp  = true
-        net   = true
+        boot_every  = 10
+        power_every = 5
+        cpu_every   = 5
+        temp_every  = 1
+        net_every   = 10
+        gpio_every  = 2
         [hardware]
         lcd_addr   = 0x27
         button_pin = 17
@@ -140,9 +142,12 @@ def test_load_config_full_file(tmp_path):
         mem_warn  = 90
     """)
     cfg = load_config(path)
-    assert cfg["lcd_addr"] == 0x27
-    assert cfg["refresh"]  == pytest.approx(3.0)
-    assert cfg["temp_warn"] == pytest.approx(80.0)
+    assert cfg["boot_every"]  == 10
+    assert cfg["power_every"] == 5
+    assert cfg["gpio_every"]  == 2
+    assert cfg["lcd_addr"]    == 0x27
+    assert cfg["refresh"]     == pytest.approx(3.0)
+    assert cfg["temp_warn"]   == pytest.approx(80.0)
 
 
 # ---------------------------------------------------------------------------
