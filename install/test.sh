@@ -176,7 +176,7 @@ echo "════════════════════════�
 if [[ $FAIL -gt 0 ]]; then
     echo
     echo "  Some tests FAILED. Fix hardware issues and re-run:"
-    echo "    sudo bash $SCRIPT_DIR/test.sh"
+    echo "    sudo porcupine test"
     exit 1
 else
     echo

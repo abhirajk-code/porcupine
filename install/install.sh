@@ -241,6 +241,5 @@ ok "Service template installed → $SERVICE_DEST  (not yet enabled)"
 echo
 echo "============================================"
 echo " Step 1 complete!"
-echo " Next: sudo bash $SCRIPT_DIR/test.sh"
-echo "   or: sudo porcupine test"
+echo " Next: sudo porcupine test"
 echo "============================================"

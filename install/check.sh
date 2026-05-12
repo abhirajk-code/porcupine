@@ -23,21 +23,21 @@ echo
 if [[ -d "$VENV_DIR" ]]; then
     ok "Virtual environment present: $VENV_DIR"
 else
-    fail "Virtual environment missing: $VENV_DIR — run Step 1 first"
+    fail "Virtual environment missing: $VENV_DIR — run: sudo bash install/install.sh"
 fi
 
 # 2. Package importable via venv Python
 if [[ -f "$VENV_PY" ]] && "$VENV_PY" -c "import porcupine" 2>/dev/null; then
     ok "porcupine package imports cleanly"
 else
-    fail "porcupine not importable from venv — run Step 1 first"
+    fail "porcupine not importable from venv — run: sudo bash install/install.sh"
 fi
 
 # 3. CLI entry point
 if [[ -f "$VENV_BIN" ]] && "$VENV_BIN" --help &>/dev/null; then
     ok "porcupine CLI entry point works"
 else
-    fail "porcupine CLI not found in venv — run Step 1 first"
+    fail "porcupine CLI not found in venv — run: sudo bash install/install.sh"
 fi
 
 # 3. Config file
@@ -73,7 +73,7 @@ fi
 if systemctl is-active --quiet porcupine 2>/dev/null; then
     ok "porcupine service is running"
 else
-    warn "porcupine service is NOT running — check: journalctl -u porcupine"
+    warn "porcupine service is NOT running — start: sudo porcupine start  logs: journalctl -u porcupine"
 fi
 
 echo
