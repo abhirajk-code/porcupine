@@ -191,6 +191,32 @@ def test_read_all_no_monitors_returns_empty():
 
 
 # ---------------------------------------------------------------------------
+# _fmt_gpio
+# ---------------------------------------------------------------------------
+
+def test_fmt_gpio_returns_two_pages():
+    data = {"gpio_pins": [None] * 40}
+    pages = daemon._fmt_gpio(data)
+    assert len(pages) == 2
+
+
+def test_fmt_gpio_page_labels_and_width():
+    data = {"gpio_pins": [None] * 40}
+    (r1_p1, r2_p1), (r1_p2, r2_p2) = daemon._fmt_gpio(data)
+    assert r1_p1.startswith("01[") and r1_p1.endswith("]19") and len(r1_p1) == 16
+    assert r2_p1.startswith("02[") and r2_p1.endswith("]20") and len(r2_p1) == 16
+    assert r1_p2.startswith("21[") and r1_p2.endswith("]39") and len(r1_p2) == 16
+    assert r2_p2.startswith("22[") and r2_p2.endswith("]40") and len(r2_p2) == 16
+
+
+def test_fmt_gpio_pin_count_per_row():
+    data = {"gpio_pins": [None] * 40}
+    (r1, _), _ = daemon._fmt_gpio(data)
+    # strip the 3-char brackets on each side to get just the 10 status chars
+    assert len(r1[3:-3]) == 10
+
+
+# ---------------------------------------------------------------------------
 # _build_screens
 # ---------------------------------------------------------------------------
 
@@ -210,6 +236,12 @@ def test_build_screens_respects_order():
     screens = daemon._build_screens(args, data)
     assert screens[0][0] == "Boot"
     assert "Net" in screens[1][0]
+
+
+def test_build_screens_gpio_contributes_two_screens():
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=1)
+    screens = daemon._build_screens(args, {"gpio_pins": [None] * 40})
+    assert len(screens) == 2
 
 
 def test_build_screens_fallback_when_none_enabled():

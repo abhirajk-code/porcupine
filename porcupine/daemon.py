@@ -86,15 +86,18 @@ def _fmt_net(data: dict) -> tuple[str, str]:
     )
 
 
-def _fmt_gpio(data: dict) -> tuple[str, str]:
+def _fmt_gpio(data: dict) -> list[tuple[str, str]]:
     pins = data.get("gpio_pins", [])
     chars = [_GPIO_CHARS.get(s, " ") for s in pins]
-    # Pad to 40 in case the monitor returned fewer entries
     chars += [" "] * (40 - len(chars))
-    # Physical header: odd pins (1,3,...,39) on row 1; even pins (2,4,...,40) on row 2
-    row1 = "".join(chars[i] for i in range(0, 40, 2))
-    row2 = "".join(chars[i] for i in range(1, 40, 2))
-    return row1, row2
+
+    def _row(indices: range, first_pin: int, last_pin: int) -> str:
+        return f"{first_pin:02d}[{''.join(chars[i] for i in indices)}]{last_pin:02d}"
+
+    return [
+        (_row(range( 0, 20, 2),  1, 19), _row(range( 1, 20, 2),  2, 20)),  # pins  1–20
+        (_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40)),  # pins 21–40
+    ]
 
 
 def _bps_str(bps: float) -> str:
@@ -135,13 +138,17 @@ def _build_screens(args: argparse.Namespace, data: dict, cycle: int = 0) -> list
     """Build the ordered LCD screen list from the latest monitor snapshot.
 
     A monitor with {flag}_every=N only appears on cycles where cycle % N == 0.
+    Formatters may return a single (line1, line2) tuple or a list of tuples for
+    multi-page monitors (e.g. GPIO shows pins 1-20 then 21-40).
     """
-    screens = [
-        formatter(data)
-        for flag, _, formatter in _MONITOR_DEFS
-        if (every := getattr(args, f"{flag}_every", 0)) > 0
-        and cycle % every == 0
-    ]
+    screens: list[tuple[str, str]] = []
+    for flag, _, formatter in _MONITOR_DEFS:
+        if (every := getattr(args, f"{flag}_every", 0)) > 0 and cycle % every == 0:
+            result = formatter(data)
+            if isinstance(result, list):
+                screens.extend(result)
+            else:
+                screens.append(result)
     return screens or [("No monitors", "enabled")]
 
 
