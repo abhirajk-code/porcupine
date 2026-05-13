@@ -98,17 +98,33 @@ def test_fmt_power_unknown_no_pct():
 # ---------------------------------------------------------------------------
 
 def test_fmt_cpu_formats_percentages():
-    data = {"cpu_avg_pct": 23.7, "mem_pct": 45.1}
+    data = {"cpu_avg_pct": 23.7, "mem_pct": 45.1, "cpu_warn": 90.0, "mem_warn": 90.0}
     line1, line2 = daemon._fmt_cpu(data)
     assert line1 == " CPU   Mem"
     assert "24%" in line2
     assert "45%" in line2
 
 
+def test_fmt_cpu_warn_cpu():
+    data = {"cpu_avg_pct": 95.0, "mem_pct": 45.0, "cpu_warn": 90.0, "mem_warn": 90.0}
+    _, line2 = daemon._fmt_cpu(data)
+    assert "WARN" in line2
+    assert "45%" in line2
+
+
+def test_fmt_cpu_warn_mem():
+    data = {"cpu_avg_pct": 20.0, "mem_pct": 92.0, "cpu_warn": 90.0, "mem_warn": 90.0}
+    _, line2 = daemon._fmt_cpu(data)
+    assert "20%" in line2
+    assert line2.endswith("WARN")
+
+
 def test_fmt_cpu_alignment_stable_across_widths():
     # The % sign for both values must always land in the same column
-    _, line2_low  = daemon._fmt_cpu({"cpu_avg_pct": 1.0,   "mem_pct": 1.0})
-    _, line2_high = daemon._fmt_cpu({"cpu_avg_pct": 100.0, "mem_pct": 100.0})
+    # Use thresholds above 100 so WARN is never triggered
+    base = {"cpu_warn": 101.0, "mem_warn": 101.0}
+    _, line2_low  = daemon._fmt_cpu({**base, "cpu_avg_pct": 1.0,   "mem_pct": 1.0})
+    _, line2_high = daemon._fmt_cpu({**base, "cpu_avg_pct": 100.0, "mem_pct": 100.0})
     assert line2_low.index("%")  == line2_high.index("%")   # CPU % column stable
     assert line2_low.rindex("%") == line2_high.rindex("%")  # Mem % column stable
 

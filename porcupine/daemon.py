@@ -63,8 +63,10 @@ def _fmt_power(data: dict) -> tuple[str, str]:
 
 
 def _fmt_cpu(data: dict) -> tuple[str, str]:
-    cpu_s = f"{data.get('cpu_avg_pct', 0):.0f}%"
-    mem_s = f"{data.get('mem_pct', 0):.0f}%"
+    cpu  = data.get("cpu_avg_pct", 0)
+    mem  = data.get("mem_pct", 0)
+    cpu_s = "WARN" if cpu >= data.get("cpu_warn", 90.0) else f"{cpu:.0f}%"
+    mem_s = "WARN" if mem >= data.get("mem_warn", 90.0) else f"{mem:.0f}%"
     return " CPU   Mem", f"{cpu_s:>4}  {mem_s:>4}"
 
 
@@ -143,7 +145,10 @@ def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]
     Formatters may return a single (line1, line2) tuple or a list of tuples for
     multi-page monitors (e.g. GPIO shows pins 1-20 then 21-40).
     """
-    data = {**data, "temp_warn": getattr(args, "temp_warn", 80.0)}
+    data = {**data,
+            "temp_warn": getattr(args, "temp_warn", 80.0),
+            "cpu_warn":  getattr(args, "cpu_warn",  90.0),
+            "mem_warn":  getattr(args, "mem_warn",  90.0)}
     screens: list[tuple[str, str]] = []
     for flag, _, formatter in _MONITOR_DEFS:
         if getattr(args, f"{flag}_every", 0) > 0:
