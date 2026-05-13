@@ -147,7 +147,7 @@ def test_build_screens_end_to_end(tmp_path):
     screens = daemon._build_screens(args, data)
     assert len(screens) == 2
     assert screens[0][0] == "Boot"
-    assert screens[1][0] == "CPU      Mem"
+    assert screens[1][0] == " CPU   Mem"
 
 
 def test_read_all_disabled_monitors_returns_empty(tmp_path):

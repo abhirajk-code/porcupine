@@ -2,7 +2,6 @@
 import math
 import threading
 import time
-from typing import Callable
 
 try:
     import lgpio as _lgpio
@@ -69,26 +68,6 @@ class Buzzer:
                 if gap_ms > 0 and i < count - 1:
                     time.sleep(gap_ms / 1000.0)
 
-    # Named alert patterns
-    def alert_temp(self) -> None:
-        """3 short beeps — CPU temperature critical."""
-        self.beep(count=3, duration_ms=200, gap_ms=100)
-
-    def alert_cpu(self) -> None:
-        """2 beeps — CPU usage sustained high."""
-        self.beep(count=2, duration_ms=200, gap_ms=100)
-
-    def alert_mem(self) -> None:
-        """1 long beep — RAM usage high."""
-        self.beep(count=1, duration_ms=600, gap_ms=0)
-
-    def alert_net(self) -> None:
-        """1 beep — network interface lost."""
-        self.beep(count=1, duration_ms=200, gap_ms=0)
-
-    def alert_bat(self) -> None:
-        """2 slow beeps — battery low."""
-        self.beep(count=2, duration_ms=400, gap_ms=200)
 
     def cleanup(self) -> None:
         if _HAS_LGPIO:
@@ -155,18 +134,9 @@ class Buzzer:
 
 class AlertChecker:
     """
-    Watches merged monitor data and fires Buzzer alert patterns when
-    configurable thresholds are exceeded.
-
-    Each alert fires once per threshold-crossing and re-arms when the
-    condition clears, preventing buzzer spam on sustained conditions
-    (except CPU, which requires the condition to persist for cpu_sustained_s).
+    Watches merged monitor data and fires a short beep on every check cycle
+    where a threshold is exceeded. Battery fires a long beep instead.
     """
-
-    _TEMP = "temp"
-    _CPU  = "cpu"
-    _MEM  = "mem"
-    _NET  = "net"
 
     def __init__(
         self,
@@ -175,77 +145,38 @@ class AlertChecker:
         cpu_warn: float = 90.0,
         mem_warn: float = 90.0,
         bat_warn: float = 40.0,
-        cpu_sustained_s: float = 30.0,
     ):
         self._buzzer = buzzer
         self._temp_warn = temp_warn
-        self._cpu_warn = cpu_warn
-        self._mem_warn = mem_warn
-        self._bat_warn = bat_warn
-        self._cpu_sustained_s = cpu_sustained_s
-
-        self._cpu_high_since: float | None = None
-        self._alerted: set[str] = set()
+        self._cpu_warn  = cpu_warn
+        self._mem_warn  = mem_warn
+        self._bat_warn  = bat_warn
 
     def check(self, data: dict) -> None:
-        """Inspect the latest merged monitor snapshot and fire alerts as needed."""
-        self._check_temp(data)
-        self._check_cpu(data)
-        self._check_mem(data)
-        self._check_net(data)
-        self._check_battery(data)
-
-    def _check_temp(self, data: dict) -> None:
+        """Inspect the latest monitor snapshot and beep for every active warning."""
         temp = data.get("cpu_temp_c")
-        if temp is None or (isinstance(temp, float) and math.isnan(temp)):
-            return
-        self._toggle(self._TEMP, temp > self._temp_warn, self._buzzer.alert_temp)
+        if temp is not None and not (isinstance(temp, float) and math.isnan(temp)):
+            if temp >= self._temp_warn:
+                self._beep(150)
 
-    def _check_cpu(self, data: dict) -> None:
-        cpu_avg = data.get("cpu_avg_pct")
-        if cpu_avg is None:
-            return
-        now = time.monotonic()
-        if cpu_avg > self._cpu_warn:
-            if self._cpu_high_since is None:
-                self._cpu_high_since = now
-            elif now - self._cpu_high_since >= self._cpu_sustained_s:
-                self._fire_once(self._CPU, self._buzzer.alert_cpu)
-        else:
-            self._cpu_high_since = None
-            self._alerted.discard(self._CPU)
+        cpu = data.get("cpu_avg_pct")
+        if cpu is not None and cpu >= self._cpu_warn:
+            self._beep(150)
 
-    def _check_mem(self, data: dict) -> None:
-        mem_pct = data.get("mem_pct")
-        if mem_pct is None:
-            return
-        self._toggle(self._MEM, mem_pct > self._mem_warn, self._buzzer.alert_mem)
+        mem = data.get("mem_pct")
+        if mem is not None and mem >= self._mem_warn:
+            self._beep(150)
 
-    def _check_battery(self, data: dict) -> None:
         pct = data.get("battery_pct")
-        if pct is None or (isinstance(pct, float) and math.isnan(pct)):
-            return
-        if data.get("power_source") != "Battery":
-            return
-        if pct < self._bat_warn:
-            threading.Thread(target=self._buzzer.alert_bat, daemon=True).start()
+        if (pct is not None and not (isinstance(pct, float) and math.isnan(pct))
+                and data.get("power_source") == "Battery" and pct < self._bat_warn):
+            self._beep(600)
 
-    def _check_net(self, data: dict) -> None:
-        iface = data.get("interface")
-        if iface is None:
-            return
-        self._toggle(self._NET, iface == "lo", self._buzzer.alert_net)
-
-    def _toggle(self, key: str, active: bool, alert_fn: Callable) -> None:
-        if active:
-            self._fire_once(key, alert_fn)
-        else:
-            self._alerted.discard(key)
-
-    def _fire_once(self, key: str, alert_fn: Callable) -> None:
-        if key not in self._alerted:
-            self._alerted.add(key)
-            threading.Thread(target=alert_fn, daemon=True).start()
+    def _beep(self, duration_ms: int) -> None:
+        threading.Thread(
+            target=lambda: self._buzzer.beep(count=1, duration_ms=duration_ms),
+            daemon=True,
+        ).start()
 
 
 # ---------------------------------------------------------------------------
