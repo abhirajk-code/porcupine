@@ -374,22 +374,31 @@ def run(args: argparse.Namespace) -> None:
         for flag, _, _ in _MONITOR_DEFS
     }
     active_alerts: set[str] = set()
+    _current_tags: list[str] = []
     _state_lock = threading.Lock()
 
-    def _on_batch_done() -> None:
-        # Called by the LCD thread after each full pass through the screen list.
-        # Beep for every currently breached alert key.
+    def _on_screen_advance(index: int) -> None:
+        # Called by the LCD thread each time a new screen is rendered.
+        # Beep only when the screen just shown belongs to a monitor with an active alert.
         with _state_lock:
             alerts_snapshot = set(active_alerts)
+            tags_snapshot = list(_current_tags)
+        if not alerts_snapshot or index >= len(tags_snapshot):
+            return
+        screen_flag = tags_snapshot[index]
         for alert_key in sorted(alerts_snapshot):
-            beep_kwargs = _ALERT_BEEP.get(alert_key)
-            if beep_kwargs:
-                _beep_async(**beep_kwargs)
+            if _ALERT_TO_FLAG.get(alert_key) == screen_flag:
+                beep_kwargs = _ALERT_BEEP.get(alert_key)
+                if beep_kwargs:
+                    _beep_async(**beep_kwargs)
 
-    lcd.on_batch_complete(_on_batch_done)
+    lcd.on_screen_advance(_on_screen_advance)
 
     last_data: dict = _read_all(args, r_cycle=0, effective_every=effective_every)
-    lcd.start(_build_screens(args, last_data), refresh_s=args.refresh)
+    screens, tags = _build_screens_tagged(args, last_data)
+    with _state_lock:
+        _current_tags = tags
+    lcd.start(screens, refresh_s=args.refresh)
 
     controller = _ButtonController(button, lcd)
 
@@ -413,8 +422,11 @@ def run(args: argparse.Namespace) -> None:
             with _state_lock:
                 active_alerts = new_alerts
 
+            screens, tags = _build_screens_tagged(args, last_data)
+            with _state_lock:
+                _current_tags = tags
             if controller.monitoring:
-                lcd.update_screens(_build_screens(args, last_data))
+                lcd.update_screens(screens)
     except KeyboardInterrupt:
         pass
     finally:
