@@ -53,14 +53,14 @@ _restart_if_running() {
 
 cmd_start() {
     need_root start
-    systemctl start $SERVICE
-    echo "started"
+    systemctl enable --now $SERVICE
+    echo "enabled and started"
 }
 
 cmd_stop() {
     need_root stop
-    systemctl stop $SERVICE
-    echo "stopped"
+    systemctl disable --now $SERVICE
+    echo "stopped and disabled"
 }
 
 cmd_status() {
@@ -155,8 +155,8 @@ usage() {
 Usage: porcupine <command> [args]
 
 Commands:
-  start                    Start the monitoring service
-  stop                     Stop the monitoring service
+  start                    Enable and start the monitoring service (survives reboot)
+  stop                     Stop and disable the monitoring service
   status                   Show service state and current configuration
   test                     Run hardware tests (interactive)
 
