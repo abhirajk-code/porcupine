@@ -33,13 +33,17 @@ def _stub_lcd() -> LCD:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("bps,expected", [
-    (0,              "0B"),
-    (512,            "512B"),
-    (1023,           "1023B"),
-    (1024,           "1.0K"),
-    (1536,           "1.5K"),
-    (1024 * 1024,    "1.0M"),
-    (2.5 * 1024**2,  "2.5M"),
+    (0,                  "0B"),
+    (512,                "512B"),
+    (1023,               "1023B"),
+    (1024,               "1.0K"),
+    (1536,               "1.5K"),
+    (100 * 1024,         "100K"),      # exactly 100 K — no decimal
+    (1023 * 1024,        "1023K"),     # high K — no decimal
+    (1024 * 1024 - 1,    "1024K"),     # rounding boundary (was "1024.0K" before fix)
+    (1024 * 1024,        "1.0M"),
+    (2.5 * 1024**2,      "2.5M"),
+    (100 * 1024 * 1024,  "100M"),      # exactly 100 M — no decimal
 ])
 def test_bps_str(bps, expected):
     assert daemon._bps_str(bps) == expected
@@ -96,9 +100,17 @@ def test_fmt_power_unknown_no_pct():
 def test_fmt_cpu_formats_percentages():
     data = {"cpu_avg_pct": 23.7, "mem_pct": 45.1}
     line1, line2 = daemon._fmt_cpu(data)
-    assert line1 == "CPU      Mem"
+    assert line1 == " CPU   Mem"
     assert "24%" in line2
     assert "45%" in line2
+
+
+def test_fmt_cpu_alignment_stable_across_widths():
+    # The % sign for both values must always land in the same column
+    _, line2_low  = daemon._fmt_cpu({"cpu_avg_pct": 1.0,   "mem_pct": 1.0})
+    _, line2_high = daemon._fmt_cpu({"cpu_avg_pct": 100.0, "mem_pct": 100.0})
+    assert line2_low.index("%")  == line2_high.index("%")   # CPU % column stable
+    assert line2_low.rindex("%") == line2_high.rindex("%")  # Mem % column stable
 
 
 # ---------------------------------------------------------------------------

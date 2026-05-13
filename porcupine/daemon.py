@@ -63,7 +63,9 @@ def _fmt_power(data: dict) -> tuple[str, str]:
 
 
 def _fmt_cpu(data: dict) -> tuple[str, str]:
-    return "CPU      Mem", f"{data.get('cpu_avg_pct', 0):.0f}%      {data.get('mem_pct', 0):.0f}%"
+    cpu_s = f"{data.get('cpu_avg_pct', 0):.0f}%"
+    mem_s = f"{data.get('mem_pct', 0):.0f}%"
+    return " CPU   Mem", f"{cpu_s:>4}  {mem_s:>4}"
 
 
 def _fmt_temp(data: dict) -> tuple[str, str]:
@@ -75,14 +77,17 @@ def _fmt_temp(data: dict) -> tuple[str, str]:
         status = "OK"
     else:
         status = "N/A"
-    temp_str = f"{temp:.1f}C" if not (isinstance(temp, float) and math.isnan(temp)) else "---"
+    if not (isinstance(temp, float) and math.isnan(temp)):
+        temp_str = f"{temp:.0f}C" if temp >= 100 else f"{temp:.1f}C"
+    else:
+        temp_str = "---"
     return ("Temperature", f"{temp_str} {status}")
 
 
 def _fmt_net(data: dict) -> tuple[str, str]:
     return (
         f"Net {data.get('interface', '???')[:5]}",
-        f"RX:{_bps_str(data.get('rx_bps', 0))} TX:{_bps_str(data.get('tx_bps', 0))}",
+        f"R:{_bps_str(data.get('rx_bps', 0))} T:{_bps_str(data.get('tx_bps', 0))}",
     )
 
 
@@ -102,9 +107,11 @@ def _fmt_gpio(data: dict) -> list[tuple[str, str]]:
 
 def _bps_str(bps: float) -> str:
     if bps >= 1024 * 1024:
-        return f"{bps / (1024 * 1024):.1f}M"
+        mb = bps / (1024 * 1024)
+        return f"{mb:.0f}M" if mb >= 100 else f"{mb:.1f}M"
     if bps >= 1024:
-        return f"{bps / 1024:.1f}K"
+        kb = bps / 1024
+        return f"{kb:.0f}K" if kb >= 100 else f"{kb:.1f}K"
     return f"{int(bps)}B"
 
 
@@ -262,7 +269,7 @@ def run(args: argparse.Namespace) -> None:
     boot.init()
     power.init(addr=args.ina219_addr)
 
-    lcd    = LCD(i2c_addr=args.lcd_addr, cols=20, rows=2)
+    lcd    = LCD(i2c_addr=args.lcd_addr, cols=16, rows=2)
     lcd.load_custom_chars(_CGRAM)
     button = Button(pin=args.button_pin, long_press_ms=2000)
     buzzer = Buzzer(pin=args.buzzer_pin)
