@@ -19,6 +19,11 @@ except (ImportError, RuntimeError):
 _HAS_GPIO = _HAS_LGPIO or _HAS_RPIGPIO
 
 
+def _is_valid(value: object) -> bool:
+    """Return True if value is a usable number (not None and not NaN)."""
+    return value is not None and not (isinstance(value, float) and math.isnan(value))
+
+
 class Buzzer:
     """
     Buzzer driver supporting passive (PWM) and active (DC) buzzers.
@@ -163,23 +168,21 @@ class AlertChecker:
 
         if self._temp_enabled:
             temp = data.get("cpu_temp_c")
-            if temp is not None and not (isinstance(temp, float) and math.isnan(temp)):
-                if temp >= self._temp_warn:
-                    active.add("temp")
+            if _is_valid(temp) and temp >= self._temp_warn:
+                active.add("temp")
 
         if self._cpu_enabled:
             cpu = data.get("cpu_avg_pct")
-            if cpu is not None and cpu >= self._cpu_warn:
+            if _is_valid(cpu) and cpu >= self._cpu_warn:
                 active.add("cpu")
 
             mem = data.get("mem_pct")
-            if mem is not None and mem >= self._mem_warn:
+            if _is_valid(mem) and mem >= self._mem_warn:
                 active.add("mem")
 
         if self._bat_enabled:
             pct = data.get("battery_pct")
-            if (pct is not None and not (isinstance(pct, float) and math.isnan(pct))
-                    and data.get("power_source") == "Battery" and pct < self._bat_warn):
+            if _is_valid(pct) and data.get("power_source") == "Battery" and pct < self._bat_warn:
                 active.add("bat")
 
         return active
