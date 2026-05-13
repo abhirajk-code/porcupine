@@ -254,6 +254,42 @@ def test_fmt_gpio_pin_count_per_row():
 
 
 # ---------------------------------------------------------------------------
+# _with_alert_indicator
+# ---------------------------------------------------------------------------
+
+def test_with_alert_indicator_inactive_returns_screens_unchanged():
+    screens = [("Boot", "#1 0h00m"), (" CPU   Mem", "  5%  12%")]
+    assert daemon._with_alert_indicator(screens, False) is screens
+
+
+def test_with_alert_indicator_places_exclamation_at_column_15():
+    screens = [("Boot", ""), (" CPU   Mem", "")]
+    result = daemon._with_alert_indicator(screens, True)
+    for line1, _ in result:
+        assert len(line1) == 16
+        assert line1[15] == "!"
+
+
+def test_with_alert_indicator_short_line1_padded():
+    screens = [("Hi", "")]
+    line1, _ = daemon._with_alert_indicator(screens, True)[0]
+    assert line1 == "Hi             !"
+
+
+def test_with_alert_indicator_full_16_char_line1_last_char_replaced():
+    screens = [("0123456789ABCDEF", "")]
+    line1, _ = daemon._with_alert_indicator(screens, True)[0]
+    assert line1 == "0123456789ABCDE!"
+    assert len(line1) == 16
+
+
+def test_with_alert_indicator_line2_never_modified():
+    screens = [("Boot", "content")]
+    _, line2 = daemon._with_alert_indicator(screens, True)[0]
+    assert line2 == "content"
+
+
+# ---------------------------------------------------------------------------
 # _build_screens
 # ---------------------------------------------------------------------------
 
