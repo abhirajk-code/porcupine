@@ -18,17 +18,19 @@ from .monitors import boot, cpu_mem, gpio_pins, network, power, temperature
 # Custom LCD characters (CGRAM slots 0-3) for the GPIO pin screen
 #
 # Each bitmap is 8 rows × 5 cols.  Bit 4 is the leftmost pixel.
-#   slot 0: Output High — solid up-arrow + base bar  (pin driving high)
-#   slot 1: Output Low  — small up-arrow + base bar  (pin driving low)
-#   slot 2: Input High  — top bar + solid down-arrow (pin reading high)
-#   slot 3: Input Low   — top bar + small down-arrow (pin reading low)
+#   slot 0: Output High — up-arrow, forked shaft  (pin driving high)
+#   slot 1: Output Low  — down-arrow, forked shaft (pin driving low)
+#   slot 2: Input High  — up-arrow, solid shaft   (pin reading high)
+#   slot 3: Input Low   — down-arrow, solid shaft  (pin reading low)
+#
+# Pixel legend (5-wide):  ..#..=0b00100  .###.=0b01110  #.#.#=0b10101  .#.#.=0b01010
 # ---------------------------------------------------------------------------
 
 _CGRAM: list[list[int]] = [
-    [0b00100, 0b01110, 0b11111, 0b00100, 0b00100, 0b00100, 0b11111, 0b00000],
-    [0b00000, 0b00100, 0b01110, 0b00100, 0b00100, 0b00100, 0b11111, 0b00000],
-    [0b11111, 0b00100, 0b00100, 0b00100, 0b11111, 0b01110, 0b00100, 0b00000],
-    [0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110, 0b00100, 0b00000],
+    [0b00100, 0b01110, 0b10101, 0b01010, 0b01010, 0b00100, 0b00000, 0b00000],  # slot 0: out_h
+    [0b00000, 0b00000, 0b00100, 0b01010, 0b01010, 0b10101, 0b01110, 0b00100],  # slot 1: out_l
+    [0b00100, 0b01110, 0b10101, 0b00100, 0b00100, 0b00100, 0b00000, 0b00000],  # slot 2: in_h
+    [0b00000, 0b00000, 0b00100, 0b00100, 0b00100, 0b10101, 0b01110, 0b00100],  # slot 3: in_l
 ]
 
 # Map gpio_pins state strings → display character
