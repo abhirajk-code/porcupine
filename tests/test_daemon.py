@@ -18,7 +18,7 @@ def _args(**overrides) -> argparse.Namespace:
         boot_every=1, power_every=1, cpu_every=1, temp_every=1, net_every=1, gpio_every=1,
         lcd_addr=0x27, button_pin=4, buzzer_pin=18, ina219_addr=0x41,
         refresh=3.0,
-        temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0,
+        temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -72,18 +72,27 @@ def test_fmt_boot_missing_keys():
 # ---------------------------------------------------------------------------
 
 def test_fmt_power_battery():
-    data = {"power_source": "Battery", "battery_pct": 75.0}
+    data = {"power_source": "Battery", "battery_pct": 75.0, "bat_warn": 40.0}
     line1, line2 = daemon._fmt_power(data)
     assert line1 == "Power"
     assert "Battery" in line2
     assert "75%" in line2
+    assert "WARN" not in line2
 
 
-def test_fmt_power_plugged_in():
-    data = {"power_source": "Plugged In", "battery_pct": 100.0}
+def test_fmt_power_battery_warn():
+    data = {"power_source": "Battery", "battery_pct": 25.0, "bat_warn": 40.0}
+    _, line2 = daemon._fmt_power(data)
+    assert "25%" in line2
+    assert "WARN" in line2
+
+
+def test_fmt_power_plugged_in_no_warn():
+    data = {"power_source": "Plugged In", "battery_pct": 20.0, "bat_warn": 40.0}
     line1, line2 = daemon._fmt_power(data)
     assert line1 == "Power"
     assert "Plugged In" in line2
+    assert "WARN" not in line2
 
 
 def test_fmt_power_unknown_no_pct():

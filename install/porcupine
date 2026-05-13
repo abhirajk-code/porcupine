@@ -96,6 +96,7 @@ cmd_status() {
     printf "  %-14s %s\n" "temp_warn"   "$(cfg_get alerts temp_warn 80.0)"
     printf "  %-14s %s\n" "cpu_warn"    "$(cfg_get alerts cpu_warn  90.0)"
     printf "  %-14s %s\n" "mem_warn"    "$(cfg_get alerts mem_warn  90.0)"
+    printf "  %-14s %s\n" "bat_warn"    "$(cfg_get alerts bat_warn  40.0)"
 }
 
 cmd_test() {
@@ -134,6 +135,7 @@ cmd_set() {
         temp-warn)        cfg_set alerts   temp_warn     "$value";;
         cpu-warn)         cfg_set alerts   cpu_warn      "$value";;
         mem-warn)         cfg_set alerts   mem_warn      "$value";;
+        bat-warn)         cfg_set alerts   bat_warn      "$value";;
         lcd-addr)         cfg_set hardware lcd_addr      "$value";;
         ina219-addr)      cfg_set hardware ina219_addr   "$value";;
         button-pin)       cfg_set hardware button_pin    "$value";;
@@ -167,6 +169,7 @@ Commands:
   set temp-warn <°C>       CPU temperature warning threshold
   set cpu-warn <%>         CPU usage warning threshold
   set mem-warn <%>         Memory usage warning threshold
+  set bat-warn <%>         Battery warning threshold (default 40)
   set lcd-addr <hex>       LCD I2C address       (e.g. 0x27)
   set ina219-addr <hex>    INA219 I2C address    (e.g. 0x41)
   set button-pin <n>       Button GPIO pin (BCM)

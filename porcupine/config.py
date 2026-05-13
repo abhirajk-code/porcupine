@@ -49,7 +49,7 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
         result["refresh"] = cp.getfloat("display", "refresh")
 
     # [alerts]
-    for key in ("temp_warn", "cpu_warn", "mem_warn"):
+    for key in ("temp_warn", "cpu_warn", "mem_warn", "bat_warn"):
         if cp.has_option("alerts", key):
             result[key] = cp.getfloat("alerts", key)
 
@@ -126,6 +126,12 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         "--mem-warn", type=float,
         default=file_cfg.get("mem_warn", 90.0),
         metavar="PCT",
+    )
+    parser.add_argument(
+        "--bat-warn", type=float,
+        default=file_cfg.get("bat_warn", 40.0),
+        metavar="PCT",
+        help="Battery percentage below which to warn (default 40)",
     )
     parser.add_argument(
         "--config",

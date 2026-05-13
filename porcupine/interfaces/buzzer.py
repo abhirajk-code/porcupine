@@ -86,6 +86,10 @@ class Buzzer:
         """1 beep — network interface lost."""
         self.beep(count=1, duration_ms=200, gap_ms=0)
 
+    def alert_bat(self) -> None:
+        """2 slow beeps — battery low."""
+        self.beep(count=2, duration_ms=400, gap_ms=200)
+
     def cleanup(self) -> None:
         if _HAS_LGPIO:
             self._lgpio_stop()
@@ -170,12 +174,14 @@ class AlertChecker:
         temp_warn: float = 80.0,
         cpu_warn: float = 90.0,
         mem_warn: float = 90.0,
+        bat_warn: float = 40.0,
         cpu_sustained_s: float = 30.0,
     ):
         self._buzzer = buzzer
         self._temp_warn = temp_warn
         self._cpu_warn = cpu_warn
         self._mem_warn = mem_warn
+        self._bat_warn = bat_warn
         self._cpu_sustained_s = cpu_sustained_s
 
         self._cpu_high_since: float | None = None
@@ -187,6 +193,7 @@ class AlertChecker:
         self._check_cpu(data)
         self._check_mem(data)
         self._check_net(data)
+        self._check_battery(data)
 
     def _check_temp(self, data: dict) -> None:
         temp = data.get("cpu_temp_c")
@@ -213,6 +220,15 @@ class AlertChecker:
         if mem_pct is None:
             return
         self._toggle(self._MEM, mem_pct > self._mem_warn, self._buzzer.alert_mem)
+
+    def _check_battery(self, data: dict) -> None:
+        pct = data.get("battery_pct")
+        if pct is None or (isinstance(pct, float) and math.isnan(pct)):
+            return
+        if data.get("power_source") != "Battery":
+            return
+        if pct < self._bat_warn:
+            threading.Thread(target=self._buzzer.alert_bat, daemon=True).start()
 
     def _check_net(self, data: dict) -> None:
         iface = data.get("interface")

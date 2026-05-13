@@ -58,7 +58,12 @@ def _fmt_boot(data: dict) -> tuple[str, str]:
 def _fmt_power(data: dict) -> tuple[str, str]:
     source = data.get("power_source", "Unknown")
     pct = data.get("battery_pct", float("nan"))
-    suffix = f" {pct:.0f}%" if not math.isnan(pct) else ""
+    bat_warn = data.get("bat_warn", 40.0)
+    if not math.isnan(pct):
+        warn = source == "Battery" and pct < bat_warn
+        suffix = f" {pct:.0f}%" + (" WARN" if warn else "")
+    else:
+        suffix = ""
     return "Power", f"{source}{suffix}"
 
 
@@ -148,7 +153,8 @@ def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]
     data = {**data,
             "temp_warn": getattr(args, "temp_warn", 80.0),
             "cpu_warn":  getattr(args, "cpu_warn",  90.0),
-            "mem_warn":  getattr(args, "mem_warn",  90.0)}
+            "mem_warn":  getattr(args, "mem_warn",  90.0),
+            "bat_warn":  getattr(args, "bat_warn",  40.0)}
     screens: list[tuple[str, str]] = []
     for flag, _, formatter in _MONITOR_DEFS:
         if getattr(args, f"{flag}_every", 0) > 0:
@@ -279,6 +285,7 @@ def run(args: argparse.Namespace) -> None:
         temp_warn=args.temp_warn,
         cpu_warn=args.cpu_warn,
         mem_warn=args.mem_warn,
+        bat_warn=args.bat_warn,
     )
 
     # Persistent worker thread — GPIO callbacks just enqueue; no thread-spawn

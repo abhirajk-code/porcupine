@@ -121,6 +121,7 @@ configure_interactive() {
     local d_twarn;  d_twarn="$(_cfg_get  alerts   temp_warn  80)"
     local d_cwarn;  d_cwarn="$(_cfg_get  alerts   cpu_warn   90)"
     local d_mwarn;  d_mwarn="$(_cfg_get  alerts   mem_warn   90)"
+    local d_bwarn;  d_bwarn="$(_cfg_get  alerts   bat_warn   40)"
 
     h2 "Hardware"
     prompt      "LCD I2C address  (hex ok, e.g. 0x27 or 0x3f)" "$d_lcd"   LCD_ADDR
@@ -143,13 +144,14 @@ configure_interactive() {
     prompt "CPU temperature warning (°C)"                       "$d_twarn" TEMP_WARN
     prompt "CPU usage warning       (%, sustained 30 s)"        "$d_cwarn" CPU_WARN
     prompt "Memory usage warning    (%)"                        "$d_mwarn" MEM_WARN
+    prompt "Battery warning         (% below which to warn)"    "$d_bwarn" BAT_WARN
 }
 
 configure_noninteractive() {
     LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; INA219_ADDR="0x41"; REFRESH="5"
     ENABLE_BOOT="true"; ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"
     ENABLE_NET="true"; ENABLE_GPIO="true"
-    TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"
+    TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"; BAT_WARN="40"
     info "Non-interactive — using all defaults"
 }
 
@@ -189,6 +191,7 @@ refresh = ${REFRESH}
 temp_warn = ${TEMP_WARN}
 cpu_warn  = ${CPU_WARN}
 mem_warn  = ${MEM_WARN}
+bat_warn  = ${BAT_WARN}
 EOF
     ok "Config written → $CONFIG_FILE"
 }
