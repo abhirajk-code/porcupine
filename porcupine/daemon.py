@@ -197,6 +197,15 @@ def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]
     return screens
 
 
+def _with_alert_indicator(
+    screens: list[tuple[str, str]], active: bool
+) -> list[tuple[str, str]]:
+    """Place '!' at column 15 (last char) on every screen's first line when any alert is active."""
+    if not active:
+        return screens
+    return [(f"{line1[:15]:<15}!", line2) for line1, line2 in screens]
+
+
 def _build_screens_tagged(
     args: argparse.Namespace, data: dict
 ) -> tuple[list[tuple[str, str]], list[str]]:
@@ -395,10 +404,17 @@ def run(args: argparse.Namespace) -> None:
     lcd.on_screen_advance(_on_screen_advance)
 
     last_data: dict = _read_all(args, r_cycle=0, effective_every=effective_every)
+    initial_alerts = alert.check(last_data)
+    _apply_escalation(args, initial_alerts, effective_every)
+    for alert_key in sorted(initial_alerts):
+        beep_kwargs = _ALERT_BEEP.get(alert_key)
+        if beep_kwargs:
+            _beep_async(**beep_kwargs)
     screens, tags = _build_screens_tagged(args, last_data)
     with _state_lock:
+        active_alerts = initial_alerts
         _current_tags = tags
-    lcd.start(screens, refresh_s=args.refresh)
+    lcd.start(_with_alert_indicator(screens, bool(initial_alerts)), refresh_s=args.refresh)
 
     controller = _ButtonController(button, lcd)
 
@@ -419,14 +435,20 @@ def run(args: argparse.Namespace) -> None:
 
             new_alerts = alert.check(last_data)
             _apply_escalation(args, new_alerts, effective_every)
-            with _state_lock:
-                active_alerts = new_alerts
 
             screens, tags = _build_screens_tagged(args, last_data)
             with _state_lock:
+                prev_alerts = set(active_alerts)
+                active_alerts = new_alerts
                 _current_tags = tags
+
+            for alert_key in sorted(new_alerts - prev_alerts):
+                beep_kwargs = _ALERT_BEEP.get(alert_key)
+                if beep_kwargs:
+                    _beep_async(**beep_kwargs)
+
             if controller.monitoring:
-                lcd.update_screens(screens)
+                lcd.update_screens(_with_alert_indicator(screens, bool(new_alerts)))
     except KeyboardInterrupt:
         pass
     finally:
