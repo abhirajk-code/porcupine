@@ -141,16 +141,15 @@ def _read_all(args: argparse.Namespace) -> dict:
     return merged
 
 
-def _build_screens(args: argparse.Namespace, data: dict, cycle: int = 0) -> list[tuple[str, str]]:
+def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]]:
     """Build the ordered LCD screen list from the latest monitor snapshot.
 
-    A monitor with {flag}_every=N only appears on cycles where cycle % N == 0.
     Formatters may return a single (line1, line2) tuple or a list of tuples for
     multi-page monitors (e.g. GPIO shows pins 1-20 then 21-40).
     """
     screens: list[tuple[str, str]] = []
     for flag, _, formatter in _MONITOR_DEFS:
-        if (every := getattr(args, f"{flag}_every", 0)) > 0 and cycle % every == 0:
+        if getattr(args, f"{flag}_every", 0) > 0:
             result = formatter(data)
             if isinstance(result, list):
                 screens.extend(result)
@@ -297,8 +296,7 @@ def run(args: argparse.Namespace) -> None:
     def _beep_async(count: int, duration_ms: int, gap_ms: int = 0) -> None:
         _beep_q.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
 
-    cycle = 0
-    lcd.start(_build_screens(args, _read_all(args), cycle), refresh_s=args.refresh)
+    lcd.start(_build_screens(args, _read_all(args)), refresh_s=args.refresh)
 
     controller = _ButtonController(button, lcd)
 
@@ -314,9 +312,8 @@ def run(args: argparse.Namespace) -> None:
         while True:
             data = _read_all(args)
             if controller.monitoring:
-                lcd.update_screens(_build_screens(args, data, cycle))
+                lcd.update_screens(_build_screens(args, data))
             alert.check(data)
-            cycle += 1
             time.sleep(args.refresh)
     except KeyboardInterrupt:
         pass
