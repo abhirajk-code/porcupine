@@ -70,18 +70,14 @@ def _fmt_cpu(data: dict) -> tuple[str, str]:
 
 def _fmt_temp(data: dict) -> tuple[str, str]:
     temp = data.get("cpu_temp_c", float("nan"))
-    throttled = data.get("throttled")
-    if throttled is True:
-        status = "THROTTLED"
-    elif throttled is False:
-        status = "OK"
-    else:
-        status = "N/A"
+    warn = data.get("temp_warn", 80.0)
     if not (isinstance(temp, float) and math.isnan(temp)):
         temp_str = f"{temp:.0f}C" if temp >= 100 else f"{temp:.1f}C"
+        suffix = " WARN" if temp >= warn else ""
     else:
         temp_str = "---"
-    return ("Temperature", f"{temp_str} {status}")
+        suffix = ""
+    return ("Temperature", f"{temp_str}{suffix}")
 
 
 def _fmt_net(data: dict) -> tuple[str, str]:
@@ -147,6 +143,7 @@ def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]
     Formatters may return a single (line1, line2) tuple or a list of tuples for
     multi-page monitors (e.g. GPIO shows pins 1-20 then 21-40).
     """
+    data = {**data, "temp_warn": getattr(args, "temp_warn", 80.0)}
     screens: list[tuple[str, str]] = []
     for flag, _, formatter in _MONITOR_DEFS:
         if getattr(args, f"{flag}_every", 0) > 0:

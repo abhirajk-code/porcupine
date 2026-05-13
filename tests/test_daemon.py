@@ -118,23 +118,23 @@ def test_fmt_cpu_alignment_stable_across_widths():
 # ---------------------------------------------------------------------------
 
 def test_fmt_temp_ok():
-    data = {"cpu_temp_c": 52.3, "throttled": False}
+    data = {"cpu_temp_c": 52.3, "temp_warn": 80.0}
     _, line2 = daemon._fmt_temp(data)
     assert "52.3C" in line2
-    assert "OK" in line2
+    assert "WARN" not in line2
 
 
-def test_fmt_temp_throttled():
-    data = {"cpu_temp_c": 85.0, "throttled": True}
+def test_fmt_temp_warn():
+    data = {"cpu_temp_c": 85.0, "temp_warn": 80.0}
     _, line2 = daemon._fmt_temp(data)
-    assert "THROTTLED" in line2
+    assert "85.0C" in line2
+    assert "WARN" in line2
 
 
 def test_fmt_temp_unavailable():
-    data = {"cpu_temp_c": float("nan"), "throttled": None}
+    data = {"cpu_temp_c": float("nan")}
     _, line2 = daemon._fmt_temp(data)
     assert "---" in line2
-    assert "N/A" in line2
 
 
 def test_fmt_temp_missing_keys():
