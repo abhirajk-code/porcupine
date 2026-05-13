@@ -177,9 +177,3 @@ def test_missing_keys_return_empty_set(checker):
     assert checker.check({}) == set()
     assert checker.check({"cpu_temp_c": float("nan")}) == set()
     assert checker.check({"battery_pct": float("nan"), "power_source": "Battery"}) == set()
-
-
-def test_buzzer_arg_accepted_for_backwards_compat():
-    bz = make_buzzer()
-    ac = AlertChecker(buzzer=bz, temp_warn=80.0)
-    assert isinstance(ac.check({"cpu_temp_c": 85.0}), set)

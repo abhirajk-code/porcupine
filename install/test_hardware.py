@@ -89,19 +89,19 @@ def cmd_buzzer(cfg: dict) -> None:
     bz = Buzzer(pin=cfg["buzzer_pin"])
 
     print("  Pattern 1/4 — 3 short beeps  (temperature alert)")
-    bz.alert_temp()
+    bz.beep(count=3, duration_ms=200, gap_ms=100)
     time.sleep(1.0)
 
-    print("  Pattern 2/4 — 2 beeps         (CPU alert)")
-    bz.alert_cpu()
+    print("  Pattern 2/4 — 2 short beeps  (CPU alert)")
+    bz.beep(count=2, duration_ms=200, gap_ms=100)
     time.sleep(1.0)
 
-    print("  Pattern 3/4 — 1 long beep     (memory alert)")
-    bz.alert_mem()
+    print("  Pattern 3/4 — 2 short beeps  (memory alert)")
+    bz.beep(count=2, duration_ms=200, gap_ms=100)
     time.sleep(1.0)
 
-    print("  Pattern 4/4 — 1 short beep    (network alert)")
-    bz.alert_net()
+    print("  Pattern 4/4 — 1 long beep    (battery low alert)")
+    bz.beep(count=1, duration_ms=600, gap_ms=0)
 
 
 # ---------------------------------------------------------------------------

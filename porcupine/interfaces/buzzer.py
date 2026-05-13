@@ -141,7 +141,6 @@ class AlertChecker:
 
     def __init__(
         self,
-        buzzer: "Buzzer | None" = None,  # accepted for backwards-compat, unused
         temp_warn: float = 80.0,
         cpu_warn: float = 90.0,
         mem_warn: float = 90.0,

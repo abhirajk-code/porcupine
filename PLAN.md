@@ -44,14 +44,18 @@ porcupine/
 
 Each monitor is a module with a `read() -> dict` function that returns the latest metric values.
 
-| Monitor | Flag | Metrics Collected |
+| Monitor | `every` flag | Metrics Collected |
 |---|---|---|
-| `power.py` | `--power` | boot count, uptime |
-| `cpu_mem.py` | `--cpu` | CPU % per core, RAM % used |
-| `temperature.py` | `--temp` | CPU temp (°C), throttle status |
-| `network.py` | `--net` | rx/tx bytes/s, active interface |
+| `boot.py` | `--boot-every` | boot count, uptime |
+| `power.py` | `--power-every` | power source, battery % |
+| `cpu_mem.py` | `--cpu-every` | CPU % per core, RAM % used |
+| `temperature.py` | `--temp-every` | CPU temp (°C) |
+| `network.py` | `--net-every` | rx/tx bytes/s, active interface |
+| `gpio_pins.py` | `--gpio-every` | BCM pin states (two screens) |
 
-Monitors are opt-in via CLI flags. A run with no flags defaults to showing all monitors.
+Each monitor has an `every` value: 0 = disabled, 1 = every cycle, N = every Nth cycle.
+At runtime, `effective_every` can drop to 1 when a threshold is breached, increasing
+the read cadence for that monitor until the value returns to normal.
 
 ---
 
@@ -70,23 +74,23 @@ Single button, three interaction modes:
 
 | Interaction | Action |
 |---|---|
-| Short press | Cycle to next metric screen |
-| Long press (2 s) | Enter menu mode |
-| Menu: short press | Move selection down |
-| Menu: long press | Confirm selection |
-
-Menu options: Toggle monitor on/off, Restart Pi, Shutdown Pi.
+| Short press | Toggle monitoring on/off (backlight + cycling) |
+| Short + short (within 3 s) | 20-second reboot countdown |
+| Short + long (within 3 s) | 20-second shutdown countdown |
+| Any press during countdown | Cancel |
 
 ### Buzzer
 
-Alert conditions (configurable thresholds):
+Alert beeps fire immediately on breach and again each time the breached monitor's screen
+is displayed. A `!` marker at column 15 of every screen's first line gives a persistent
+visual cue while any alert is active.
 
 | Condition | Default threshold | Pattern |
 |---|---|---|
-| CPU temp critical | > 80 °C | 3 short beeps |
-| CPU usage high | > 90 % for 30 s | 2 beeps |
-| RAM usage high | > 90 % | 1 long beep |
-| Network down | interface lost | 1 beep |
+| CPU temp critical | > 80 °C (`temp_warn`) | 3 × 200 ms beeps, 100 ms gap |
+| CPU usage high | > 90 % (`cpu_warn`) | 2 × 200 ms beeps, 100 ms gap |
+| RAM usage high | > 90 % (`mem_warn`) | 2 × 200 ms beeps, 100 ms gap |
+| Battery low | < 40 % (`bat_warn`) | 1 × 600 ms beep |
 
 ---
 
@@ -95,9 +99,12 @@ Alert conditions (configurable thresholds):
 Runtime flags (CLI / systemd `ExecStart`):
 
 ```
-porcupine [--power] [--cpu] [--temp] [--net]
-          [--lcd-addr 0x27] [--button-pin 17] [--buzzer-pin 18]
-          [--refresh 3] [--temp-warn 80] [--cpu-warn 90] [--mem-warn 90]
+porcupine [--boot-every N] [--power-every N] [--cpu-every N]
+          [--temp-every N] [--net-every N]  [--gpio-every N]
+          [--lcd-addr 0x27] [--button-pin 4] [--buzzer-pin 18]
+          [--ina219-addr 0x41] [--refresh 5]
+          [--temp-warn 80] [--cpu-warn 90] [--mem-warn 90] [--bat-warn 40]
+          [--config /etc/porcupine/porcupine.conf]
 ```
 
 A `porcupine.conf` file in `/etc/porcupine/` can hold persistent defaults so flags do not need to be repeated across reboots.

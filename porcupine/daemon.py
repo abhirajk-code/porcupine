@@ -180,13 +180,17 @@ def _apply_escalation(
     active_alerts: set[str],
     effective_every: dict,
 ) -> None:
-    """Escalate to every=1 for monitors with active alerts; restore when clear."""
-    for flag, _, _ in _MONITOR_DEFS:
+    """Escalate to every=1 for monitors with active alerts; restore when clear.
+
+    Only the three monitors that have alert thresholds (temp, cpu, power) are
+    touched — boot, net, and gpio can never trigger an alert.
+    """
+    for flag in frozenset(_ALERT_TO_FLAG.values()):  # {"temp", "cpu", "power"}
         base_every = getattr(args, f"{flag}_every", 0)
         if base_every <= 0:
             continue
         flag_has_alert = any(
-            fl == flag for ak, fl in _ALERT_TO_FLAG.items() if ak in active_alerts
+            ak in active_alerts for ak, fl in _ALERT_TO_FLAG.items() if fl == flag
         )
         effective_every[flag] = 1 if flag_has_alert else base_every
 
