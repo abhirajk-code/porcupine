@@ -191,7 +191,7 @@ def test_button_start_stop_without_hardware():
 def test_alert_checker_empty_data():
     from porcupine.interfaces.buzzer import AlertChecker, Buzzer
     checker = AlertChecker(Buzzer(pin=18))
-    checker.check({})   # must not raise
+    checker.check_for("temp", {})   # must not raise
 
 
 # ---------------------------------------------------------------------------

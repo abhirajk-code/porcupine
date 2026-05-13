@@ -145,10 +145,18 @@ def _read_all(args: argparse.Namespace) -> dict:
 
 
 def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]]:
-    """Build the ordered LCD screen list from the latest monitor snapshot.
+    """Build the ordered LCD screen list from the latest monitor snapshot."""
+    screens, _ = _build_screens_tagged(args, data)
+    return screens
 
-    Formatters may return a single (line1, line2) tuple or a list of tuples for
-    multi-page monitors (e.g. GPIO shows pins 1-20 then 21-40).
+
+def _build_screens_tagged(
+    args: argparse.Namespace, data: dict
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Like _build_screens but also returns a parallel list of monitor flag names.
+
+    The flag name identifies which monitor owns each screen so the alert checker
+    can fire only when that monitor's screen is currently displayed.
     """
     data = {**data,
             "temp_warn": getattr(args, "temp_warn", 80.0),
@@ -156,14 +164,19 @@ def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]
             "mem_warn":  getattr(args, "mem_warn",  90.0),
             "bat_warn":  getattr(args, "bat_warn",  40.0)}
     screens: list[tuple[str, str]] = []
+    tags: list[str] = []
     for flag, _, formatter in _MONITOR_DEFS:
         if getattr(args, f"{flag}_every", 0) > 0:
             result = formatter(data)
             if isinstance(result, list):
                 screens.extend(result)
+                tags.extend([flag] * len(result))
             else:
                 screens.append(result)
-    return screens or [("No monitors", "enabled")]
+                tags.append(flag)
+    if not screens:
+        return [("No monitors", "enabled")], [""]
+    return screens, tags
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +321,8 @@ def run(args: argparse.Namespace) -> None:
     def _beep_async(count: int, duration_ms: int, gap_ms: int = 0) -> None:
         _beep_q.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
 
-    lcd.start(_build_screens(args, _read_all(args)), refresh_s=args.refresh)
+    screens, tags = _build_screens_tagged(args, _read_all(args))
+    lcd.start(screens, refresh_s=args.refresh)
 
     controller = _ButtonController(button, lcd)
 
@@ -323,9 +337,11 @@ def run(args: argparse.Namespace) -> None:
     try:
         while True:
             data = _read_all(args)
+            screens, tags = _build_screens_tagged(args, data)
             if controller.monitoring:
-                lcd.update_screens(_build_screens(args, data))
-            alert.check(data)
+                lcd.update_screens(screens)
+            current_monitor = tags[lcd.current_index] if tags else ""
+            alert.check_for(current_monitor, data)
             time.sleep(args.refresh)
     except KeyboardInterrupt:
         pass

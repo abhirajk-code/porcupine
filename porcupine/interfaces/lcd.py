@@ -117,6 +117,11 @@ class LCD:
         with self._lock:
             self._lcd.clear()
 
+    @property
+    def current_index(self) -> int:
+        with self._lock:
+            return self._index
+
     def update_screens(self, screens: list[tuple[str, str]]) -> None:
         """Replace the screen list (called when monitors toggled)."""
         with self._lock:
