@@ -321,8 +321,7 @@ def run(args: argparse.Namespace) -> None:
     def _beep_async(count: int, duration_ms: int, gap_ms: int = 0) -> None:
         _beep_q.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
 
-    screens, tags = _build_screens_tagged(args, _read_all(args))
-    lcd.start(screens, refresh_s=args.refresh)
+    lcd.start(_build_screens(args, _read_all(args)), refresh_s=args.refresh)
 
     controller = _ButtonController(button, lcd)
 
@@ -337,11 +336,9 @@ def run(args: argparse.Namespace) -> None:
     try:
         while True:
             data = _read_all(args)
-            screens, tags = _build_screens_tagged(args, data)
             if controller.monitoring:
-                lcd.update_screens(screens)
-            current_monitor = tags[lcd.current_index] if tags else ""
-            alert.check_for(current_monitor, data)
+                lcd.update_screens(_build_screens(args, data))
+            alert.check(data)
             time.sleep(args.refresh)
     except KeyboardInterrupt:
         pass

@@ -158,15 +158,15 @@ class AlertChecker:
         self._cpu_enabled  = cpu_enabled
         self._bat_enabled  = bat_enabled
 
-    def check_for(self, monitor: str, data: dict) -> None:
-        """Beep if the named monitor's screen is active and its threshold is exceeded."""
-        if monitor == "temp" and self._temp_enabled:
+    def check(self, data: dict) -> None:
+        """Beep for every enabled monitor whose threshold is currently exceeded."""
+        if self._temp_enabled:
             temp = data.get("cpu_temp_c")
             if temp is not None and not (isinstance(temp, float) and math.isnan(temp)):
                 if temp >= self._temp_warn:
                     self._beep(150)
 
-        elif monitor == "cpu" and self._cpu_enabled:
+        if self._cpu_enabled:
             cpu = data.get("cpu_avg_pct")
             if cpu is not None and cpu >= self._cpu_warn:
                 self._beep(150)
@@ -175,7 +175,7 @@ class AlertChecker:
             if mem is not None and mem >= self._mem_warn:
                 self._beep(150)
 
-        elif monitor == "power" and self._bat_enabled:
+        if self._bat_enabled:
             pct = data.get("battery_pct")
             if (pct is not None and not (isinstance(pct, float) and math.isnan(pct))
                     and data.get("power_source") == "Battery" and pct < self._bat_warn):
