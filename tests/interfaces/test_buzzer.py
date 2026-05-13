@@ -86,163 +86,100 @@ def test_stub_pin_records_set_calls():
 
 @pytest.fixture
 def checker():
-    bz = make_buzzer()
     ac = AlertChecker(
-        buzzer=bz,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0,
         temp_enabled=True, cpu_enabled=True, bat_enabled=True,
     )
-    return bz, ac
-
-
-def _wait_for_beep(bz: Buzzer, timeout: float = 0.5) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if pin_log(bz):
-            return True
-        time.sleep(0.01)
-    return False
+    return ac
 
 
 # ---------------------------------------------------------------------------
-# AlertChecker — short beep on every cycle when threshold exceeded
+# AlertChecker — check() returns set of active alert keys
 # ---------------------------------------------------------------------------
 
-def test_temp_alert_fires_short_beep_above_threshold(checker):
-    bz, ac = checker
-    with patch("porcupine.interfaces.buzzer.time.sleep"):
-        ac.check({"cpu_temp_c": 85.0})
-    assert _wait_for_beep(bz)
-    assert pin_log(bz).count(True) == 1
+def test_temp_alert_active_above_threshold(checker):
+    assert "temp" in checker.check({"cpu_temp_c": 85.0})
 
 
-def test_temp_alert_silent_below_threshold(checker):
-    bz, ac = checker
-    ac.check({"cpu_temp_c": 75.0})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
+def test_temp_alert_inactive_below_threshold(checker):
+    assert "temp" not in checker.check({"cpu_temp_c": 75.0})
 
 
-def test_temp_alert_fires_every_cycle(checker):
-    bz, ac = checker
-    with patch("porcupine.interfaces.buzzer.time.sleep"):
-        ac.check({"cpu_temp_c": 85.0})
-        ac.check({"cpu_temp_c": 85.0})
-        ac.check({"cpu_temp_c": 85.0})
-    _wait_for_beep(bz)
-    time.sleep(0.05)
-    assert pin_log(bz).count(True) == 3
+def test_temp_alert_returned_on_every_call(checker):
+    for _ in range(3):
+        assert "temp" in checker.check({"cpu_temp_c": 85.0})
 
 
-def test_cpu_alert_fires_immediately(checker):
-    bz, ac = checker
-    with patch("porcupine.interfaces.buzzer.time.sleep"):
-        ac.check({"cpu_avg_pct": 95.0})
-    assert _wait_for_beep(bz)
-    assert pin_log(bz).count(True) == 1
+def test_cpu_alert_active_above_threshold(checker):
+    assert "cpu" in checker.check({"cpu_avg_pct": 95.0})
 
 
-def test_cpu_alert_silent_below_threshold(checker):
-    bz, ac = checker
-    ac.check({"cpu_avg_pct": 80.0})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
+def test_cpu_alert_inactive_below_threshold(checker):
+    assert "cpu" not in checker.check({"cpu_avg_pct": 80.0})
 
 
-def test_mem_alert_fires_short_beep(checker):
-    bz, ac = checker
-    with patch("porcupine.interfaces.buzzer.time.sleep"):
-        ac.check({"mem_pct": 95.0})
-    assert _wait_for_beep(bz)
-    assert pin_log(bz).count(True) == 1
+def test_mem_alert_active_above_threshold(checker):
+    assert "mem" in checker.check({"mem_pct": 95.0})
 
 
-def test_mem_alert_silent_below_threshold(checker):
-    bz, ac = checker
-    ac.check({"mem_pct": 80.0})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
+def test_mem_alert_inactive_below_threshold(checker):
+    assert "mem" not in checker.check({"mem_pct": 80.0})
 
 
 # ---------------------------------------------------------------------------
-# AlertChecker — battery: long beep (600 ms)
+# AlertChecker — battery key
 # ---------------------------------------------------------------------------
 
-def test_bat_alert_fires_long_beep_below_threshold(checker):
-    bz, ac = checker
-    sleep_calls = []
-    with patch("porcupine.interfaces.buzzer.time.sleep", side_effect=lambda s: sleep_calls.append(s)):
-        ac.check({"power_source": "Battery", "battery_pct": 25.0})
-    assert _wait_for_beep(bz)
-    assert pin_log(bz).count(True) == 1
-    assert sleep_calls[0] == pytest.approx(0.6)
+def test_bat_alert_active_below_threshold(checker):
+    result = checker.check({"power_source": "Battery", "battery_pct": 25.0})
+    assert "bat" in result
 
 
-def test_bat_alert_silent_above_threshold(checker):
-    bz, ac = checker
-    ac.check({"power_source": "Battery", "battery_pct": 75.0})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
+def test_bat_alert_inactive_above_threshold(checker):
+    result = checker.check({"power_source": "Battery", "battery_pct": 75.0})
+    assert "bat" not in result
 
 
-def test_bat_alert_silent_when_plugged_in(checker):
-    bz, ac = checker
-    ac.check({"power_source": "Plugged In", "battery_pct": 5.0})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
+def test_bat_alert_inactive_when_plugged_in(checker):
+    result = checker.check({"power_source": "Plugged In", "battery_pct": 5.0})
+    assert "bat" not in result
 
 
-def test_bat_alert_fires_every_cycle(checker):
-    bz, ac = checker
-    with patch("porcupine.interfaces.buzzer.time.sleep"):
-        ac.check({"power_source": "Battery", "battery_pct": 20.0})
-        ac.check({"power_source": "Battery", "battery_pct": 20.0})
-    _wait_for_beep(bz)
-    time.sleep(0.05)
-    assert pin_log(bz).count(True) == 2
+def test_bat_alert_returned_on_every_call(checker):
+    for _ in range(2):
+        assert "bat" in checker.check({"power_source": "Battery", "battery_pct": 20.0})
 
 
 # ---------------------------------------------------------------------------
-# AlertChecker — monitor disabled suppresses beep
+# AlertChecker — monitor disabled suppresses key
 # ---------------------------------------------------------------------------
 
-def test_temp_alert_silent_when_monitor_disabled():
+def test_temp_alert_suppressed_when_monitor_disabled():
+    ac = AlertChecker(temp_warn=80.0, temp_enabled=False)
+    assert "temp" not in ac.check({"cpu_temp_c": 85.0})
+
+
+def test_cpu_alert_suppressed_when_monitor_disabled():
+    ac = AlertChecker(cpu_warn=90.0, cpu_enabled=False)
+    assert "cpu" not in ac.check({"cpu_avg_pct": 95.0})
+
+
+def test_bat_alert_suppressed_when_monitor_disabled():
+    ac = AlertChecker(bat_warn=40.0, bat_enabled=False)
+    assert "bat" not in ac.check({"power_source": "Battery", "battery_pct": 10.0})
+
+
+# ---------------------------------------------------------------------------
+# AlertChecker — missing / nan data does not crash, returns empty set
+# ---------------------------------------------------------------------------
+
+def test_missing_keys_return_empty_set(checker):
+    assert checker.check({}) == set()
+    assert checker.check({"cpu_temp_c": float("nan")}) == set()
+    assert checker.check({"battery_pct": float("nan"), "power_source": "Battery"}) == set()
+
+
+def test_buzzer_arg_accepted_for_backwards_compat():
     bz = make_buzzer()
-    ac = AlertChecker(buzzer=bz, temp_warn=80.0, temp_enabled=False)
-    with patch("porcupine.interfaces.buzzer.time.sleep"):
-        ac.check({"cpu_temp_c": 85.0})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
-
-
-def test_cpu_alert_silent_when_monitor_disabled():
-    bz = make_buzzer()
-    ac = AlertChecker(buzzer=bz, cpu_warn=90.0, cpu_enabled=False)
-    with patch("porcupine.interfaces.buzzer.time.sleep"):
-        ac.check({"cpu_avg_pct": 95.0})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
-
-
-def test_bat_alert_silent_when_monitor_disabled():
-    bz = make_buzzer()
-    ac = AlertChecker(buzzer=bz, bat_warn=40.0, bat_enabled=False)
-    with patch("porcupine.interfaces.buzzer.time.sleep"):
-        ac.check({"power_source": "Battery", "battery_pct": 10.0})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
-
-
-# ---------------------------------------------------------------------------
-# AlertChecker — missing / nan data does not crash
-# ---------------------------------------------------------------------------
-
-def test_missing_keys_do_not_crash(checker):
-    bz, ac = checker
-    ac.check({})
-    ac.check({})
-    ac.check({})
-    ac.check({"cpu_temp_c": float("nan")})
-    ac.check({"battery_pct": float("nan"), "power_source": "Battery"})
-    time.sleep(0.05)
-    assert pin_log(bz) == []
+    ac = AlertChecker(buzzer=bz, temp_warn=80.0)
+    assert isinstance(ac.check({"cpu_temp_c": 85.0}), set)

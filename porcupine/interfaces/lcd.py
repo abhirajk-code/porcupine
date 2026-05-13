@@ -29,6 +29,7 @@ class LCD:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._refresh_s: float = 3.0
+        self._batch_cb: Callable | None = None
 
         if _HAS_RPLCD:
             self._lcd = CharLCD(
@@ -122,6 +123,11 @@ class LCD:
         with self._lock:
             return self._index
 
+    def on_batch_complete(self, cb: Callable) -> None:
+        """Register a callback invoked once the display completes a full pass."""
+        with self._lock:
+            self._batch_cb = cb
+
     def update_screens(self, screens: list[tuple[str, str]]) -> None:
         """Replace the screen list (called when monitors toggled)."""
         with self._lock:
@@ -154,10 +160,15 @@ class LCD:
 
     def _cycle_loop(self, refresh_s: float) -> None:
         while not self._stop_event.wait(timeout=refresh_s):
+            batch_cb = None
             with self._lock:
                 if not self._in_menu:
                     self._index = (self._index + 1) % max(len(self._screens), 1)
                     self._render_current()
+                    if self._index == 0:
+                        batch_cb = self._batch_cb
+            if batch_cb is not None:
+                batch_cb()
 
 
 class _StubLCD:

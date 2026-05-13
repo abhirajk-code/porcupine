@@ -119,6 +119,25 @@ def _bps_str(bps: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Alert → monitor flag mapping and per-alert beep patterns
+# ---------------------------------------------------------------------------
+
+_ALERT_TO_FLAG: dict[str, str] = {
+    "temp": "temp",
+    "cpu":  "cpu",
+    "mem":  "cpu",
+    "bat":  "power",
+}
+
+_ALERT_BEEP: dict[str, dict] = {
+    "temp": {"count": 3, "duration_ms": 200, "gap_ms": 100},
+    "cpu":  {"count": 2, "duration_ms": 200, "gap_ms": 100},
+    "mem":  {"count": 2, "duration_ms": 200, "gap_ms": 100},
+    "bat":  {"count": 1, "duration_ms": 600, "gap_ms":   0},
+}
+
+
+# ---------------------------------------------------------------------------
 # Monitor registry  (flag name, module, formatter)
 # ---------------------------------------------------------------------------
 
@@ -132,16 +151,44 @@ _MONITOR_DEFS = [
 ]
 
 
-def _read_all(args: argparse.Namespace) -> dict:
-    """Call read() on every enabled monitor and merge results."""
+def _read_all(
+    args: argparse.Namespace,
+    r_cycle: int = 0,
+    effective_every: "dict | None" = None,
+) -> dict:
+    """Call read() on every enabled monitor whose cycle is due and merge results.
+
+    At r_cycle=0 all enabled monitors are read regardless of their every value.
+    """
     merged: dict = {}
     for flag, module, _ in _MONITOR_DEFS:
-        if getattr(args, f"{flag}_every", 0) > 0:
-            try:
-                merged.update(module.read())
-            except Exception:
-                logging.warning("monitor %r read failed", flag, exc_info=True)
+        base_every = getattr(args, f"{flag}_every", 0)
+        if base_every <= 0:
+            continue
+        every = (effective_every or {}).get(flag, base_every) if effective_every is not None else base_every
+        if r_cycle % every != 0:
+            continue
+        try:
+            merged.update(module.read())
+        except Exception:
+            logging.warning("monitor %r read failed", flag, exc_info=True)
     return merged
+
+
+def _apply_escalation(
+    args: argparse.Namespace,
+    active_alerts: set[str],
+    effective_every: dict,
+) -> None:
+    """Escalate to every=1 for monitors with active alerts; restore when clear."""
+    for flag, _, _ in _MONITOR_DEFS:
+        base_every = getattr(args, f"{flag}_every", 0)
+        if base_every <= 0:
+            continue
+        flag_has_alert = any(
+            fl == flag for ak, fl in _ALERT_TO_FLAG.items() if ak in active_alerts
+        )
+        effective_every[flag] = 1 if flag_has_alert else base_every
 
 
 def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]]:
@@ -294,7 +341,6 @@ def run(args: argparse.Namespace) -> None:
     button = Button(pin=args.button_pin, long_press_ms=2000)
     buzzer = Buzzer(pin=args.buzzer_pin)
     alert  = AlertChecker(
-        buzzer,
         temp_warn=args.temp_warn,
         cpu_warn=args.cpu_warn,
         mem_warn=args.mem_warn,
@@ -321,7 +367,29 @@ def run(args: argparse.Namespace) -> None:
     def _beep_async(count: int, duration_ms: int, gap_ms: int = 0) -> None:
         _beep_q.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
 
-    lcd.start(_build_screens(args, _read_all(args)), refresh_s=args.refresh)
+    # Two-counter escalation state
+    r_cycle = 0
+    effective_every: dict = {
+        flag: getattr(args, f"{flag}_every", 0)
+        for flag, _, _ in _MONITOR_DEFS
+    }
+    active_alerts: set[str] = set()
+    _state_lock = threading.Lock()
+
+    def _on_batch_done() -> None:
+        # Called by the LCD thread after each full pass through the screen list.
+        # Beep for every currently breached alert key.
+        with _state_lock:
+            alerts_snapshot = set(active_alerts)
+        for alert_key in sorted(alerts_snapshot):
+            beep_kwargs = _ALERT_BEEP.get(alert_key)
+            if beep_kwargs:
+                _beep_async(**beep_kwargs)
+
+    lcd.on_batch_complete(_on_batch_done)
+
+    last_data: dict = _read_all(args, r_cycle=0, effective_every=effective_every)
+    lcd.start(_build_screens(args, last_data), refresh_s=args.refresh)
 
     controller = _ButtonController(button, lcd)
 
@@ -335,11 +403,18 @@ def run(args: argparse.Namespace) -> None:
 
     try:
         while True:
-            data = _read_all(args)
-            if controller.monitoring:
-                lcd.update_screens(_build_screens(args, data))
-            alert.check(data)
             time.sleep(args.refresh)
+            r_cycle += 1
+            data = _read_all(args, r_cycle=r_cycle, effective_every=effective_every)
+            last_data = {**last_data, **data}
+
+            new_alerts = alert.check(last_data)
+            _apply_escalation(args, new_alerts, effective_every)
+            with _state_lock:
+                active_alerts = new_alerts
+
+            if controller.monitoring:
+                lcd.update_screens(_build_screens(args, last_data))
     except KeyboardInterrupt:
         pass
     finally:
