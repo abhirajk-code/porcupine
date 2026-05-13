@@ -78,7 +78,7 @@ def _fmt_cpu(data: dict) -> tuple[str, str]:
 def _fmt_temp(data: dict) -> tuple[str, str]:
     temp = data.get("cpu_temp_c", float("nan"))
     warn = data.get("temp_warn", 80.0)
-    if not (isinstance(temp, float) and math.isnan(temp)):
+    if not math.isnan(temp):
         temp_str = f"{temp:.0f}C" if temp >= 100 else f"{temp:.1f}C"
         suffix = " WARN" if temp >= warn else ""
     else:
@@ -108,12 +108,16 @@ def _fmt_gpio(data: dict) -> list[tuple[str, str]]:
     ]
 
 
+_KB = 1024
+_MB = 1024 * 1024
+
+
 def _bps_str(bps: float) -> str:
-    if bps >= 1024 * 1024:
-        mb = bps / (1024 * 1024)
+    if bps >= _MB:
+        mb = bps / _MB
         return f"{mb:.0f}M" if mb >= 100 else f"{mb:.1f}M"
-    if bps >= 1024:
-        kb = bps / 1024
+    if bps >= _KB:
+        kb = bps / _KB
         return f"{kb:.0f}K" if kb >= 100 else f"{kb:.1f}K"
     return f"{int(bps)}B"
 
@@ -135,6 +139,10 @@ _ALERT_BEEP: dict[str, dict] = {
     "mem":  {"count": 2, "duration_ms": 200, "gap_ms": 100},
     "bat":  {"count": 1, "duration_ms": 600, "gap_ms":   0},
 }
+
+# Monitors that can ever have an alert — derived from _ALERT_TO_FLAG values.
+# Used by _apply_escalation to skip boot/net/gpio (which have no alert conditions).
+_ALERTABLE_FLAGS: frozenset[str] = frozenset(_ALERT_TO_FLAG.values())
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +173,7 @@ def _read_all(
         base_every = getattr(args, f"{flag}_every", 0)
         if base_every <= 0:
             continue
-        every = (effective_every or {}).get(flag, base_every) if effective_every is not None else base_every
+        every = (effective_every or {}).get(flag, base_every)
         if r_cycle % every != 0:
             continue
         try:
@@ -180,18 +188,12 @@ def _apply_escalation(
     active_alerts: set[str],
     effective_every: dict,
 ) -> None:
-    """Escalate to every=1 for monitors with active alerts; restore when clear.
-
-    Only the three monitors that have alert thresholds (temp, cpu, power) are
-    touched — boot, net, and gpio can never trigger an alert.
-    """
-    for flag in frozenset(_ALERT_TO_FLAG.values()):  # {"temp", "cpu", "power"}
+    """Escalate to every=1 for monitors with active alerts; restore when clear."""
+    for flag in _ALERTABLE_FLAGS:
         base_every = getattr(args, f"{flag}_every", 0)
         if base_every <= 0:
             continue
-        flag_has_alert = any(
-            ak in active_alerts for ak, fl in _ALERT_TO_FLAG.items() if fl == flag
-        )
+        flag_has_alert = any(_ALERT_TO_FLAG.get(ak) == flag for ak in active_alerts)
         effective_every[flag] = 1 if flag_has_alert else base_every
 
 
@@ -380,6 +382,12 @@ def run(args: argparse.Namespace) -> None:
     def _beep_async(count: int, duration_ms: int, gap_ms: int = 0) -> None:
         _beep_q.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
 
+    def _beep_alerts(alert_keys: set[str]) -> None:
+        for alert_key in sorted(alert_keys):
+            beep_kwargs = _ALERT_BEEP.get(alert_key)
+            if beep_kwargs:
+                _beep_async(**beep_kwargs)
+
     # Two-counter escalation state
     r_cycle = 0
     effective_every: dict = {
@@ -410,10 +418,7 @@ def run(args: argparse.Namespace) -> None:
     last_data: dict = _read_all(args, r_cycle=0, effective_every=effective_every)
     initial_alerts = alert.check(last_data)
     _apply_escalation(args, initial_alerts, effective_every)
-    for alert_key in sorted(initial_alerts):
-        beep_kwargs = _ALERT_BEEP.get(alert_key)
-        if beep_kwargs:
-            _beep_async(**beep_kwargs)
+    _beep_alerts(initial_alerts)
     screens, tags = _build_screens_tagged(args, last_data)
     with _state_lock:
         active_alerts = initial_alerts
@@ -446,10 +451,7 @@ def run(args: argparse.Namespace) -> None:
                 active_alerts = new_alerts
                 _current_tags = tags
 
-            for alert_key in sorted(new_alerts - prev_alerts):
-                beep_kwargs = _ALERT_BEEP.get(alert_key)
-                if beep_kwargs:
-                    _beep_async(**beep_kwargs)
+            _beep_alerts(new_alerts - prev_alerts)
 
             if controller.monitoring:
                 lcd.update_screens(_with_alert_indicator(screens, bool(new_alerts)))
