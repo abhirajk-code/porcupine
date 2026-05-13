@@ -87,7 +87,11 @@ def test_stub_pin_records_set_calls():
 @pytest.fixture
 def checker():
     bz = make_buzzer()
-    ac = AlertChecker(buzzer=bz, temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0)
+    ac = AlertChecker(
+        buzzer=bz,
+        temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0,
+        temp_enabled=True, cpu_enabled=True, bat_enabled=True,
+    )
     return bz, ac
 
 
@@ -196,6 +200,37 @@ def test_bat_alert_fires_every_cycle(checker):
     _wait_for_beep(bz)
     time.sleep(0.05)
     assert pin_log(bz).count(True) == 2  # one beep per check
+
+
+# ---------------------------------------------------------------------------
+# AlertChecker — monitor disabled suppresses beep
+# ---------------------------------------------------------------------------
+
+def test_temp_alert_silent_when_monitor_disabled():
+    bz = make_buzzer()
+    ac = AlertChecker(buzzer=bz, temp_warn=80.0, temp_enabled=False)
+    with patch("porcupine.interfaces.buzzer.time.sleep"):
+        ac.check({"cpu_temp_c": 85.0})
+    time.sleep(0.05)
+    assert pin_log(bz) == []
+
+
+def test_cpu_alert_silent_when_monitor_disabled():
+    bz = make_buzzer()
+    ac = AlertChecker(buzzer=bz, cpu_warn=90.0, cpu_enabled=False)
+    with patch("porcupine.interfaces.buzzer.time.sleep"):
+        ac.check({"cpu_avg_pct": 95.0})
+    time.sleep(0.05)
+    assert pin_log(bz) == []
+
+
+def test_bat_alert_silent_when_monitor_disabled():
+    bz = make_buzzer()
+    ac = AlertChecker(buzzer=bz, bat_warn=40.0, bat_enabled=False)
+    with patch("porcupine.interfaces.buzzer.time.sleep"):
+        ac.check({"power_source": "Battery", "battery_pct": 10.0})
+    time.sleep(0.05)
+    assert pin_log(bz) == []
 
 
 # ---------------------------------------------------------------------------

@@ -145,32 +145,41 @@ class AlertChecker:
         cpu_warn: float = 90.0,
         mem_warn: float = 90.0,
         bat_warn: float = 40.0,
+        temp_enabled: bool = True,
+        cpu_enabled: bool = True,
+        bat_enabled: bool = True,
     ):
         self._buzzer = buzzer
-        self._temp_warn = temp_warn
-        self._cpu_warn  = cpu_warn
-        self._mem_warn  = mem_warn
-        self._bat_warn  = bat_warn
+        self._temp_warn    = temp_warn
+        self._cpu_warn     = cpu_warn
+        self._mem_warn     = mem_warn
+        self._bat_warn     = bat_warn
+        self._temp_enabled = temp_enabled
+        self._cpu_enabled  = cpu_enabled
+        self._bat_enabled  = bat_enabled
 
     def check(self, data: dict) -> None:
         """Inspect the latest monitor snapshot and beep for every active warning."""
-        temp = data.get("cpu_temp_c")
-        if temp is not None and not (isinstance(temp, float) and math.isnan(temp)):
-            if temp >= self._temp_warn:
+        if self._temp_enabled:
+            temp = data.get("cpu_temp_c")
+            if temp is not None and not (isinstance(temp, float) and math.isnan(temp)):
+                if temp >= self._temp_warn:
+                    self._beep(150)
+
+        if self._cpu_enabled:
+            cpu = data.get("cpu_avg_pct")
+            if cpu is not None and cpu >= self._cpu_warn:
                 self._beep(150)
 
-        cpu = data.get("cpu_avg_pct")
-        if cpu is not None and cpu >= self._cpu_warn:
-            self._beep(150)
+            mem = data.get("mem_pct")
+            if mem is not None and mem >= self._mem_warn:
+                self._beep(150)
 
-        mem = data.get("mem_pct")
-        if mem is not None and mem >= self._mem_warn:
-            self._beep(150)
-
-        pct = data.get("battery_pct")
-        if (pct is not None and not (isinstance(pct, float) and math.isnan(pct))
-                and data.get("power_source") == "Battery" and pct < self._bat_warn):
-            self._beep(600)
+        if self._bat_enabled:
+            pct = data.get("battery_pct")
+            if (pct is not None and not (isinstance(pct, float) and math.isnan(pct))
+                    and data.get("power_source") == "Battery" and pct < self._bat_warn):
+                self._beep(600)
 
     def _beep(self, duration_ms: int) -> None:
         threading.Thread(

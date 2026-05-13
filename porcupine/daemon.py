@@ -286,6 +286,9 @@ def run(args: argparse.Namespace) -> None:
         cpu_warn=args.cpu_warn,
         mem_warn=args.mem_warn,
         bat_warn=args.bat_warn,
+        temp_enabled=args.temp_every > 0,
+        cpu_enabled=args.cpu_every > 0,
+        bat_enabled=args.power_every > 0,
     )
 
     # Persistent worker thread — GPIO callbacks just enqueue; no thread-spawn
