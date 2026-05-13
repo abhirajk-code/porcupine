@@ -152,13 +152,13 @@ fi
 sep "6 / 6 — Alert checker (dry-run)"
 echo "  Verifying AlertChecker wires up without error..."
 "$PY" - <<'PYEOF'
-from porcupine.interfaces.buzzer import AlertChecker, Buzzer
+from porcupine.interfaces.buzzer import AlertChecker
 from porcupine.config import load_config
 cfg = load_config()
-bz = Buzzer(pin=cfg.get("buzzer_pin", 18))
-ac = AlertChecker(bz, temp_warn=cfg.get("temp_warn", 80),
+ac = AlertChecker(temp_warn=cfg.get("temp_warn", 80),
                   cpu_warn=cfg.get("cpu_warn", 90),
-                  mem_warn=cfg.get("mem_warn", 90))
+                  mem_warn=cfg.get("mem_warn", 90),
+                  bat_warn=cfg.get("bat_warn", 40))
 ac.check({})   # must not raise
 print("  AlertChecker OK.")
 PYEOF

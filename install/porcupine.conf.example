@@ -28,5 +28,6 @@ refresh = 5
 [alerts]
 # Thresholds that trigger buzzer alerts.
 temp_warn = 80   # °C — CPU temperature
-cpu_warn  = 90   # %  — sustained CPU usage (for 30 s)
+cpu_warn  = 90   # %  — sustained CPU usage
 mem_warn  = 90   # %  — RAM usage
+bat_warn  = 40   # %  — battery percentage below which to warn (battery-powered only)
