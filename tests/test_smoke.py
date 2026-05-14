@@ -144,7 +144,8 @@ def test_build_screens_end_to_end(tmp_path):
         "cpu_avg_pct": 25.0, "mem_pct": 48.0,
         "cpu_pct": [], "mem_used_mb": 500, "mem_total_mb": 1024,
     }
-    screens = daemon._build_screens(args, data)
+    monitors = daemon._make_monitors(args)
+    screens = daemon._build_screens(monitors, data)
     assert len(screens) == 2
     assert screens[0][0] == "Boot"
     assert screens[1][0] == " CPU   Mem"
@@ -159,7 +160,8 @@ def test_read_all_disabled_monitors_returns_empty(tmp_path):
          "--temp-every", "0", "--net-every", "0", "--gpio-every", "0"],
         config_path=str(tmp_path / "none.conf"),
     )
-    data = daemon._read_all(args)
+    monitors = daemon._make_monitors(args)
+    data = daemon._read_all(monitors)
     assert data == {}
 
 

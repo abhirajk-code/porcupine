@@ -1,6 +1,7 @@
 """Daemon wiring tests — no hardware required."""
 import argparse
 import math
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,6 +23,11 @@ def _args(**overrides) -> argparse.Namespace:
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
+
+
+def _monitors(args: argparse.Namespace) -> list:
+    """Shorthand for daemon._make_monitors(args)."""
+    return daemon._make_monitors(args)
 
 
 def _stub_lcd() -> LCD:
@@ -186,48 +192,6 @@ def test_fmt_net_truncates_long_interface_name():
 
 
 # ---------------------------------------------------------------------------
-# _read_all
-# ---------------------------------------------------------------------------
-
-def test_read_all_calls_only_enabled_monitors():
-    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
-    with patch("porcupine.daemon.boot.read", return_value={"boot_count": 3, "uptime_s": 100.0}), \
-         patch("porcupine.daemon.cpu_mem.read") as mock_cpu:
-        data = daemon._read_all(args)
-
-    mock_cpu.assert_not_called()
-    assert "boot_count" in data
-    assert "cpu_avg_pct" not in data
-
-
-def test_read_all_merges_multiple_monitors():
-    args = _args(boot_every=1, power_every=0, cpu_every=1, temp_every=0, net_every=0, gpio_every=0)
-    with patch("porcupine.daemon.boot.read", return_value={"boot_count": 1, "uptime_s": 60.0}), \
-         patch("porcupine.daemon.cpu_mem.read", return_value={"cpu_avg_pct": 30.0, "mem_pct": 50.0,
-                                                              "cpu_pct": [], "mem_used_mb": 512,
-                                                              "mem_total_mb": 1024}):
-        data = daemon._read_all(args)
-
-    assert "boot_count" in data
-    assert "cpu_avg_pct" in data
-
-
-def test_read_all_skips_failing_monitor():
-    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
-    with patch("porcupine.daemon.boot.read", side_effect=RuntimeError("hw error")):
-        data = daemon._read_all(args)
-    assert data == {}
-
-
-def test_read_all_no_monitors_returns_empty():
-    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
-    with patch("porcupine.daemon.boot.read") as m:
-        data = daemon._read_all(args)
-    m.assert_not_called()
-    assert data == {}
-
-
-# ---------------------------------------------------------------------------
 # _fmt_gpio
 # ---------------------------------------------------------------------------
 
@@ -290,36 +254,165 @@ def test_with_alert_indicator_line2_never_modified():
 
 
 # ---------------------------------------------------------------------------
+# _make_monitors
+# ---------------------------------------------------------------------------
+
+def test_make_monitors_returns_only_enabled():
+    args = _args(boot_every=1, power_every=0, cpu_every=1, temp_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = daemon._make_monitors(args)
+    flags = [m.flag for m in monitors]
+    assert flags == ["boot", "cpu"]
+
+
+def test_make_monitors_empty_when_all_disabled():
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=0)
+    assert daemon._make_monitors(args) == []
+
+
+def test_make_monitors_every_set_from_args():
+    args = _args(boot_every=5, cpu_every=2, power_every=0, temp_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = daemon._make_monitors(args)
+    by_flag = {m.flag: m for m in monitors}
+    assert by_flag["boot"].every == 5
+    assert by_flag["cpu"].every  == 2
+
+
+def test_make_monitors_thresholds_set_from_args():
+    args = _args(temp_warn=70.0, cpu_warn=85.0, mem_warn=95.0, bat_warn=20.0)
+    monitors = daemon._make_monitors(args)
+    by_flag = {m.flag: m for m in monitors}
+    assert by_flag["temp"]._temp_warn == 70.0
+    assert by_flag["cpu"]._cpu_warn   == 85.0
+    assert by_flag["power"]._bat_warn == 20.0
+
+
+# ---------------------------------------------------------------------------
+# Monitor.has_breach and beep_pattern
+# ---------------------------------------------------------------------------
+
+def test_temp_monitor_has_breach():
+    m = daemon._TempMonitor(temp_warn=80.0)
+    assert m.has_breach({"cpu_temp_c": 85.0}) is True
+    assert m.has_breach({"cpu_temp_c": 79.9}) is False
+    assert m.has_breach({"cpu_temp_c": float("nan")}) is False
+    assert m.has_breach({}) is False
+
+
+def test_cpu_mem_monitor_has_breach_cpu():
+    m = daemon._CpuMemMonitor(cpu_warn=90.0, mem_warn=90.0)
+    assert m.has_breach({"cpu_avg_pct": 91.0, "mem_pct": 50.0}) is True
+
+
+def test_cpu_mem_monitor_has_breach_mem():
+    m = daemon._CpuMemMonitor(cpu_warn=90.0, mem_warn=90.0)
+    assert m.has_breach({"cpu_avg_pct": 20.0, "mem_pct": 92.0}) is True
+
+
+def test_cpu_mem_monitor_single_beep_pattern():
+    m = daemon._CpuMemMonitor(cpu_warn=90.0, mem_warn=90.0)
+    pattern = m.beep_pattern()
+    assert pattern is not None
+    assert isinstance(pattern["count"], int)
+
+
+def test_power_monitor_has_breach():
+    m = daemon._PowerMonitor(bat_warn=40.0)
+    assert m.has_breach({"power_source": "Battery", "battery_pct": 30.0}) is True
+    assert m.has_breach({"power_source": "Battery", "battery_pct": 50.0}) is False
+    assert m.has_breach({"power_source": "Plugged In", "battery_pct": 10.0}) is False
+
+
+def test_non_alertable_monitors_have_no_beep():
+    for cls in (daemon._BootMonitor, daemon._NetMonitor, daemon._GpioMonitor):
+        m = cls()
+        assert m.beep_pattern() is None
+        assert m.has_breach({}) is False
+
+
+# ---------------------------------------------------------------------------
+# _read_all
+# ---------------------------------------------------------------------------
+
+def test_read_all_calls_only_enabled_monitors():
+    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    with patch("porcupine.daemon.boot.read", return_value={"boot_count": 3, "uptime_s": 100.0}), \
+         patch("porcupine.daemon.cpu_mem.read") as mock_cpu:
+        data = daemon._read_all(monitors)
+
+    mock_cpu.assert_not_called()
+    assert "boot_count" in data
+    assert "cpu_avg_pct" not in data
+
+
+def test_read_all_merges_multiple_monitors():
+    args = _args(boot_every=1, power_every=0, cpu_every=1, temp_every=0, net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    with patch("porcupine.daemon.boot.read", return_value={"boot_count": 1, "uptime_s": 60.0}), \
+         patch("porcupine.daemon.cpu_mem.read", return_value={"cpu_avg_pct": 30.0, "mem_pct": 50.0,
+                                                              "cpu_pct": [], "mem_used_mb": 512,
+                                                              "mem_total_mb": 1024}):
+        data = daemon._read_all(monitors)
+
+    assert "boot_count" in data
+    assert "cpu_avg_pct" in data
+
+
+def test_read_all_skips_failing_monitor():
+    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    with patch("porcupine.daemon.boot.read", side_effect=RuntimeError("hw error")):
+        data = daemon._read_all(monitors)
+    assert data == {}
+
+
+def test_read_all_no_monitors_returns_empty():
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    with patch("porcupine.daemon.boot.read") as m:
+        data = daemon._read_all(monitors)
+    m.assert_not_called()
+    assert data == {}
+
+
+# ---------------------------------------------------------------------------
 # _build_screens
 # ---------------------------------------------------------------------------
 
 def test_build_screens_one_per_enabled_monitor():
     args = _args(boot_every=1, power_every=0, cpu_every=1, temp_every=0, net_every=0, gpio_every=0)
+    monitors = _monitors(args)
     data = {"boot_count": 1, "uptime_s": 60, "cpu_avg_pct": 10, "mem_pct": 20,
             "cpu_pct": [], "mem_used_mb": 100, "mem_total_mb": 500}
-    screens = daemon._build_screens(args, data)
+    screens = daemon._build_screens(monitors, data)
     assert len(screens) == 2
 
 
 def test_build_screens_respects_order():
     args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0, net_every=1, gpio_every=0)
+    monitors = _monitors(args)
     data = {"boot_count": 1, "uptime_s": 0,
             "interface": "eth0", "rx_bps": 0, "tx_bps": 0,
             "rx_total_mb": 0, "tx_total_mb": 0}
-    screens = daemon._build_screens(args, data)
+    screens = daemon._build_screens(monitors, data)
     assert screens[0][0] == "Boot"
     assert "Net" in screens[1][0]
 
 
 def test_build_screens_gpio_contributes_two_screens():
     args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=1)
-    screens = daemon._build_screens(args, {"gpio_pins": [None] * 40})
+    monitors = _monitors(args)
+    screens = daemon._build_screens(monitors, {"gpio_pins": [None] * 40})
     assert len(screens) == 2
 
 
 def test_build_screens_fallback_when_none_enabled():
     args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0, net_every=0, gpio_every=0)
-    screens = daemon._build_screens(args, {})
+    monitors = _monitors(args)
+    screens = daemon._build_screens(monitors, {})
     assert screens == [("No monitors", "enabled")]
 
 
@@ -331,9 +424,10 @@ def test_d_cycle_zero_shows_all_enabled():
     """d_cycle=0: every enabled monitor appears (0 % N == 0 for all N)."""
     args = _args(boot_every=10, power_every=0, cpu_every=5, temp_every=1,
                  net_every=10, gpio_every=0)
+    monitors = _monitors(args)
     data = {"boot_count": 1, "uptime_s": 0,
             "cpu_avg_pct": 10, "mem_pct": 20, "cpu_pct": [], "mem_used_mb": 100, "mem_total_mb": 500}
-    screens = daemon._build_screens(args, data, d_cycle=0)
+    screens = daemon._build_screens(monitors, data, d_cycle=0)
     labels = [s[0] for s in screens]
     assert "Boot" in labels
     assert " CPU   Mem" in labels
@@ -342,26 +436,26 @@ def test_d_cycle_zero_shows_all_enabled():
 
 def test_d_cycle_filters_by_every():
     """Monitors with every=N only appear when d_cycle % N == 0."""
-    # boot_every=10, cpu_every=5, temp_every=1
     args = _args(boot_every=10, power_every=0, cpu_every=5, temp_every=1,
                  net_every=0, gpio_every=0)
+    monitors = _monitors(args)
     data = {"boot_count": 1, "uptime_s": 0,
             "cpu_avg_pct": 10, "mem_pct": 20, "cpu_pct": [], "mem_used_mb": 100, "mem_total_mb": 500}
 
     # d_cycle=1: only temp (1%1==0); boot (1%10!=0) and cpu (1%5!=0) hidden
-    screens = daemon._build_screens(args, data, d_cycle=1)
+    screens = daemon._build_screens(monitors, data, d_cycle=1)
     labels = [s[0] for s in screens]
     assert labels == ["Temperature"]
 
     # d_cycle=5: cpu and temp appear; boot still hidden (5%10!=0)
-    screens = daemon._build_screens(args, data, d_cycle=5)
+    screens = daemon._build_screens(monitors, data, d_cycle=5)
     labels = [s[0] for s in screens]
     assert " CPU   Mem" in labels
     assert "Temperature" in labels
     assert "Boot" not in labels
 
     # d_cycle=10: all three appear (10%10==0, 10%5==0, 10%1==0)
-    screens = daemon._build_screens(args, data, d_cycle=10)
+    screens = daemon._build_screens(monitors, data, d_cycle=10)
     labels = [s[0] for s in screens]
     assert "Boot" in labels
     assert " CPU   Mem" in labels
@@ -370,11 +464,73 @@ def test_d_cycle_filters_by_every():
 
 def test_d_cycle_fallback_when_no_monitors_due():
     """If no monitors are due at a given d_cycle, show the fallback screen."""
-    # boot_every=10 only; at d_cycle=1 it's not due
     args = _args(boot_every=10, power_every=0, cpu_every=0, temp_every=0,
                  net_every=0, gpio_every=0)
-    screens = daemon._build_screens(args, {"boot_count": 1, "uptime_s": 0}, d_cycle=1)
+    monitors = _monitors(args)
+    screens = daemon._build_screens(monitors, {"boot_count": 1, "uptime_s": 0}, d_cycle=1)
     assert screens == [("No monitors", "enabled")]
+
+
+# ---------------------------------------------------------------------------
+# _Notifier — beep behaviour
+# ---------------------------------------------------------------------------
+
+def _make_notifier():
+    lcd        = MagicMock()
+    beep_calls = []
+    controller = MagicMock()
+    controller._lcd_on = True
+
+    def _beep_async(**kwargs):
+        beep_calls.append(kwargs)
+
+    notifier = daemon._Notifier(lcd, _beep_async, controller, only_alert=False)
+    return notifier, lcd, controller, beep_calls
+
+
+def test_notifier_beeps_on_first_breach():
+    notifier, lcd, controller, beep_calls = _make_notifier()
+    args = _args(temp_every=1, boot_every=0, power_every=0, cpu_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    data = {"cpu_temp_c": 85.0}   # above 80 °C default
+
+    notifier.update(monitors, data, {"temp"}, d_cycle=0)
+    assert any(c["count"] == 3 for c in beep_calls)   # temp = 3 beeps
+
+
+def test_notifier_no_beep_on_repeated_breach():
+    notifier, lcd, controller, beep_calls = _make_notifier()
+    args = _args(temp_every=1, boot_every=0, power_every=0, cpu_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    data = {"cpu_temp_c": 85.0}
+
+    notifier.update(monitors, data, {"temp"}, d_cycle=0)
+    first_count = len(beep_calls)
+    notifier.update(monitors, data, {"temp"}, d_cycle=0)  # still breached — no new beep
+    assert len(beep_calls) == first_count
+
+
+def test_notifier_on_screen_advance_beeps_for_breached_screen():
+    notifier, lcd, controller, beep_calls = _make_notifier()
+    args = _args(temp_every=1, boot_every=1, power_every=0, cpu_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    data = {"cpu_temp_c": 85.0, "boot_count": 1, "uptime_s": 0}
+
+    # Seed notifier state: temp breached, tags = [boot, temp]
+    notifier.update(monitors, data, {"temp"}, d_cycle=0)
+    beep_calls.clear()
+
+    # on_screen_advance fired for screen index 0 (boot) — no beep
+    notifier.on_screen_advance(0)
+    assert len(beep_calls) == 0
+
+    # on_screen_advance fired for screen index 1 (temp) — should beep
+    notifier.on_screen_advance(1)
+    assert len(beep_calls) == 1
+    assert beep_calls[0]["count"] == 3
 
 
 # ---------------------------------------------------------------------------
