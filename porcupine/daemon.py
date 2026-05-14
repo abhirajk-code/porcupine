@@ -197,9 +197,9 @@ def _apply_escalation(
         effective_every[flag] = 1 if flag_has_alert else base_every
 
 
-def _build_screens(args: argparse.Namespace, data: dict) -> list[tuple[str, str]]:
+def _build_screens(args: argparse.Namespace, data: dict, d_cycle: int = 0) -> list[tuple[str, str]]:
     """Build the ordered LCD screen list from the latest monitor snapshot."""
-    screens, _ = _build_screens_tagged(args, data)
+    screens, _ = _build_screens_tagged(args, data, d_cycle=d_cycle)
     return screens
 
 
@@ -213,12 +213,13 @@ def _with_alert_indicator(
 
 
 def _build_screens_tagged(
-    args: argparse.Namespace, data: dict
+    args: argparse.Namespace, data: dict, d_cycle: int = 0
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """Like _build_screens but also returns a parallel list of monitor flag names.
 
     The flag name identifies which monitor owns each screen so the alert checker
     can fire only when that monitor's screen is currently displayed.
+    d_cycle=0 always includes all enabled monitors (used at startup and in tests).
     """
     data = {**data,
             "temp_warn": getattr(args, "temp_warn", 80.0),
@@ -228,14 +229,18 @@ def _build_screens_tagged(
     screens: list[tuple[str, str]] = []
     tags: list[str] = []
     for flag, _, formatter in _MONITOR_DEFS:
-        if getattr(args, f"{flag}_every", 0) > 0:
-            result = formatter(data)
-            if isinstance(result, list):
-                screens.extend(result)
-                tags.extend([flag] * len(result))
-            else:
-                screens.append(result)
-                tags.append(flag)
+        every = getattr(args, f"{flag}_every", 0)
+        if every <= 0:
+            continue
+        if d_cycle % every != 0:
+            continue
+        result = formatter(data)
+        if isinstance(result, list):
+            screens.extend(result)
+            tags.extend([flag] * len(result))
+        else:
+            screens.append(result)
+            tags.append(flag)
     if not screens:
         return [("No monitors", "enabled")], [""]
     return screens, tags
@@ -390,6 +395,8 @@ def run(args: argparse.Namespace) -> None:
 
     # Two-counter escalation state
     r_cycle = 0
+    d_cycle = 0           # increments each time the LCD completes a full rotation
+    _lcd_wrapped = threading.Event()
     effective_every: dict = {
         flag: getattr(args, f"{flag}_every", 0)
         for flag, _, _ in _MONITOR_DEFS
@@ -400,7 +407,10 @@ def run(args: argparse.Namespace) -> None:
 
     def _on_screen_advance(index: int) -> None:
         # Called by the LCD thread each time a new screen is rendered.
+        # Signal a full-rotation wrap so the main loop can increment d_cycle.
         # Beep only when the screen just shown belongs to a monitor with an active alert.
+        if index == 0:
+            _lcd_wrapped.set()
         with _state_lock:
             alerts_snapshot = set(active_alerts)
             tags_snapshot = list(_current_tags)
@@ -419,7 +429,7 @@ def run(args: argparse.Namespace) -> None:
     initial_alerts = alert.check(last_data)
     _apply_escalation(args, initial_alerts, effective_every)
     _beep_alerts(initial_alerts)
-    screens, tags = _build_screens_tagged(args, last_data)
+    screens, tags = _build_screens_tagged(args, last_data, d_cycle=0)
     with _state_lock:
         active_alerts = initial_alerts
         _current_tags = tags
@@ -439,13 +449,22 @@ def run(args: argparse.Namespace) -> None:
         while True:
             time.sleep(args.refresh)
             r_cycle += 1
+
+            wrapped = _lcd_wrapped.is_set()
+            if wrapped:
+                _lcd_wrapped.clear()
+                d_cycle += 1
+
             data = _read_all(args, r_cycle=r_cycle, effective_every=effective_every)
-            last_data = {**last_data, **data}
+            if not data and not wrapped:
+                continue
+            if data:
+                last_data = {**last_data, **data}
 
             new_alerts = alert.check(last_data)
             _apply_escalation(args, new_alerts, effective_every)
 
-            screens, tags = _build_screens_tagged(args, last_data)
+            screens, tags = _build_screens_tagged(args, last_data, d_cycle=d_cycle)
             with _state_lock:
                 prev_alerts = set(active_alerts)
                 active_alerts = new_alerts

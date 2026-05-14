@@ -324,6 +324,60 @@ def test_build_screens_fallback_when_none_enabled():
 
 
 # ---------------------------------------------------------------------------
+# _build_screens — d_cycle filtering
+# ---------------------------------------------------------------------------
+
+def test_d_cycle_zero_shows_all_enabled():
+    """d_cycle=0: every enabled monitor appears (0 % N == 0 for all N)."""
+    args = _args(boot_every=10, power_every=0, cpu_every=5, temp_every=1,
+                 net_every=10, gpio_every=0)
+    data = {"boot_count": 1, "uptime_s": 0,
+            "cpu_avg_pct": 10, "mem_pct": 20, "cpu_pct": [], "mem_used_mb": 100, "mem_total_mb": 500}
+    screens = daemon._build_screens(args, data, d_cycle=0)
+    labels = [s[0] for s in screens]
+    assert "Boot" in labels
+    assert " CPU   Mem" in labels
+    assert "Temperature" in labels
+
+
+def test_d_cycle_filters_by_every():
+    """Monitors with every=N only appear when d_cycle % N == 0."""
+    # boot_every=10, cpu_every=5, temp_every=1
+    args = _args(boot_every=10, power_every=0, cpu_every=5, temp_every=1,
+                 net_every=0, gpio_every=0)
+    data = {"boot_count": 1, "uptime_s": 0,
+            "cpu_avg_pct": 10, "mem_pct": 20, "cpu_pct": [], "mem_used_mb": 100, "mem_total_mb": 500}
+
+    # d_cycle=1: only temp (1%1==0); boot (1%10!=0) and cpu (1%5!=0) hidden
+    screens = daemon._build_screens(args, data, d_cycle=1)
+    labels = [s[0] for s in screens]
+    assert labels == ["Temperature"]
+
+    # d_cycle=5: cpu and temp appear; boot still hidden (5%10!=0)
+    screens = daemon._build_screens(args, data, d_cycle=5)
+    labels = [s[0] for s in screens]
+    assert " CPU   Mem" in labels
+    assert "Temperature" in labels
+    assert "Boot" not in labels
+
+    # d_cycle=10: all three appear (10%10==0, 10%5==0, 10%1==0)
+    screens = daemon._build_screens(args, data, d_cycle=10)
+    labels = [s[0] for s in screens]
+    assert "Boot" in labels
+    assert " CPU   Mem" in labels
+    assert "Temperature" in labels
+
+
+def test_d_cycle_fallback_when_no_monitors_due():
+    """If no monitors are due at a given d_cycle, show the fallback screen."""
+    # boot_every=10 only; at d_cycle=1 it's not due
+    args = _args(boot_every=10, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=0)
+    screens = daemon._build_screens(args, {"boot_count": 1, "uptime_s": 0}, d_cycle=1)
+    assert screens == [("No monitors", "enabled")]
+
+
+# ---------------------------------------------------------------------------
 # run() — smoke test
 # ---------------------------------------------------------------------------
 
