@@ -10,14 +10,17 @@ from .lcd import LCD
 class ButtonController:
     """
     Button press sequences:
-      1. Short press (LCD on)         — start 5-second window; if no follow-up,
-                                        turn off LCD backlight (monitoring continues)
-      2. Short press (LCD off)        — turn LCD back on
-      3. Short + short press (< 5 s)  — 20-second reboot countdown
-      4. Short + long press  (< 5 s)  — 20-second shutdown countdown
+      1. Short press (LCD on, cycling) — 5-second window; if no follow-up, freeze
+                                         current screen (data keeps refreshing)
+      2. Short press (LCD on, frozen)  — 5-second window; if no follow-up, LCD off
+                                         and unfreeze (resumes cycling when turned on)
+      3. Short press (LCD off)         — turn LCD on, resume cycling
+      4. Short + short press (< 5 s)   — 20-second reboot countdown
+      5. Short + long press  (< 5 s)   — 20-second shutdown countdown
+      6. Short press during countdown  — cancel countdown
+      7. Long press (idle)             — on_long_idle callback (e.g. toggle only_alert)
 
-    During a countdown, a short press cancels it.
-    Data collection always continues regardless of LCD state.
+    Data collection always continues regardless of LCD or freeze state.
     """
 
     _WINDOW_S    = 5.0
@@ -26,6 +29,7 @@ class ButtonController:
     def __init__(self, button: Button, lcd: LCD, on_long_idle=None):
         self._lcd    = lcd
         self._lcd_on = True
+        self._frozen = False
         # idle | after_first | after_second_start | counting
         self._state  = "idle"
         self._window_timer: threading.Timer | None = None
@@ -51,6 +55,7 @@ class ButtonController:
         if self._state == "idle":
             if not self._lcd_on:
                 self._lcd_on = True
+                self._frozen = False
                 self._lcd.resume()
             else:
                 self._state = "after_first"
@@ -78,8 +83,14 @@ class ButtonController:
             self._lcd.pause()
 
     def _window_expired(self) -> None:
-        self._lcd_on = False
-        self._lcd.pause()
+        if not self._frozen:
+            self._frozen = True
+            self._lcd.freeze()
+        else:
+            self._frozen = False
+            self._lcd.unfreeze()
+            self._lcd_on = False
+            self._lcd.pause()
         self._state = "idle"
 
     def _cancel_window(self) -> None:

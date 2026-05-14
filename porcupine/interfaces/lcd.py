@@ -31,6 +31,7 @@ class LCD:
         self._refresh_s: float = 3.0
         self._screen_cb: Callable | None = None
         self._display_enabled: bool = True
+        self._frozen: bool = False
 
         if _HAS_RPLCD:
             self._lcd = CharLCD(
@@ -82,6 +83,16 @@ class LCD:
             self._display_enabled = True
             self._lcd.backlight_enabled = True
             self._render_current()
+
+    def freeze(self) -> None:
+        """Hold the current screen; data still refreshes but cycling stops."""
+        with self._lock:
+            self._frozen = True
+
+    def unfreeze(self) -> None:
+        """Resume screen cycling from the current position."""
+        with self._lock:
+            self._frozen = False
 
     def next_screen(self) -> None:
         """Advance to the next screen (called from button short-press)."""
@@ -159,7 +170,8 @@ class LCD:
             idx = 0
             with self._lock:
                 if not self._in_menu:
-                    self._index = (self._index + 1) % max(len(self._screens), 1)
+                    if not self._frozen:
+                        self._index = (self._index + 1) % max(len(self._screens), 1)
                     if self._display_enabled:
                         self._render_current()
                     screen_cb = self._screen_cb

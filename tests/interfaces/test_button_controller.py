@@ -77,11 +77,24 @@ def test_short_press_starts_window_timer():
     mock_timer.start.assert_called_once()
 
 
-def test_window_expired_pauses_lcd_and_returns_to_idle():
+def test_window_expired_freezes_lcd_first_time():
     ctrl, cbs, lcd = _make_controller()
     ctrl._window_expired()
+    lcd.freeze.assert_called_once()
+    lcd.pause.assert_not_called()
+    assert ctrl._state == "idle"
+    assert ctrl._frozen is True
+    assert ctrl._lcd_on is True
+
+
+def test_window_expired_pauses_and_unfreezes_second_time():
+    ctrl, cbs, lcd = _make_controller()
+    ctrl._frozen = True
+    ctrl._window_expired()
+    lcd.unfreeze.assert_called_once()
     lcd.pause.assert_called_once()
     assert ctrl._state == "idle"
+    assert ctrl._frozen is False
     assert ctrl._lcd_on is False
 
 

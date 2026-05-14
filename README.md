@@ -89,8 +89,9 @@ The button is wired to BCM pin 4 (configurable). A short press is under 2 second
 
 | Action | Effect |
 |---|---|
-| Short press (LCD off) | Turn LCD back on |
-| Short press (LCD on) | Start a 5-second window; LCD turns off if no follow-up |
+| Short press (LCD off) | Turn LCD on, resume cycling |
+| Short press (LCD on, cycling) | 5-second window; if no follow-up → freeze current screen |
+| Short press (LCD on, frozen) | 5-second window; if no follow-up → LCD off + unfreeze |
 | Short + short within 5 s | 20-second reboot countdown |
 | Short + long within 5 s | 20-second shutdown countdown |
 | Short press during countdown | Cancel countdown |
