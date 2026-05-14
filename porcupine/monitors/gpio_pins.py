@@ -1,7 +1,10 @@
-"""40-pin GPIO header state monitor — reads pin directions and levels via sysfs."""
+"""40-pin GPIO header state monitor — reads direction and level via debugfs."""
+import re
 from pathlib import Path
 
-# Sysfs root — overridable in tests via monkeypatch
+# debugfs path — overridable in tests via monkeypatch
+_DEBUG_GPIO = Path("/sys/kernel/debug/gpio")
+# sysfs fallback — used when debugfs is unreadable (e.g. not running as root)
 _SYSFS_ROOT = Path("/sys/class/gpio")
 
 # Physical header pins 1-40: (kind, bcm_number|None)
@@ -49,18 +52,71 @@ _PINS: list[tuple[str, int | None]] = [
     ("gpio", 21),    # 40
 ]
 
+# Regex for a pin line in /sys/kernel/debug/gpio:
+#   " gpio-17   (GPIO17              |label               ) in  hi"
+_PIN_RE = re.compile(
+    r"\s+gpio-(\d+)\s+\([^|]+\|\s*([^)]*?)\s*\)\s+(in|out)\s+(hi|lo)"
+)
 
-def _read_bcm(bcm: int) -> dict | None:
-    """Return {"direction": "in"|"out", "value": 0|1} for an exported GPIO, else None."""
-    base = _SYSFS_ROOT / f"gpio{bcm}"
-    if not base.exists():
-        return None
+
+def _parse_debugfs() -> dict[int, dict]:
+    """
+    Parse /sys/kernel/debug/gpio → {bcm: {"direction": "in"|"out", "value": 0|1, "label": str}}.
+
+    Identifies the main header GPIO chip by requiring it covers ≥ 28 pins,
+    which filters out small I2C expanders. Works on Pi 4 (chip base=0) and
+    Pi 5 (chip base offset, e.g. 571). Returns {} on any read failure.
+    """
     try:
-        direction = (base / "direction").read_text().strip()
-        value = int((base / "value").read_text().strip())
-        return {"direction": direction, "value": value}
+        text = _DEBUG_GPIO.read_text()
     except OSError:
-        return None
+        return {}
+
+    result: dict[int, dict] = {}
+    chip_base: int = 0
+    chip_ok: bool = False
+
+    for line in text.splitlines():
+        m = re.match(r"gpiochip\d+: GPIOs (\d+)-(\d+)", line)
+        if m:
+            chip_base = int(m.group(1))
+            chip_ok   = int(m.group(2)) - chip_base + 1 >= 28
+            continue
+
+        if not chip_ok:
+            continue
+
+        m = _PIN_RE.match(line)
+        if not m:
+            continue
+
+        bcm = int(m.group(1)) - chip_base
+        if 0 <= bcm <= 27:
+            result[bcm] = {
+                "direction": m.group(3),
+                "value":     1 if m.group(4) == "hi" else 0,
+                "label":     m.group(2).strip(),
+            }
+
+    return result
+
+
+def _parse_sysfs() -> dict[int, dict]:
+    """Fallback: read only pins that have been exported to /sys/class/gpio."""
+    result: dict[int, dict] = {}
+    for _, bcm in _PINS:
+        if bcm is None:
+            continue
+        base = _SYSFS_ROOT / f"gpio{bcm}"
+        if not base.exists():
+            continue
+        try:
+            direction = (base / "direction").read_text().strip()
+            value     = int((base / "value").read_text().strip())
+            result[bcm] = {"direction": direction, "value": value, "label": ""}
+        except OSError:
+            pass
+    return result
 
 
 def read() -> dict:
@@ -76,17 +132,19 @@ def read() -> dict:
       "in_h"  GPIO input, level high
       "in_l"  GPIO input, level low
       None    GPIO not exported / unconfigured
+
+    Reads from /sys/kernel/debug/gpio (single file, shows all pins including
+    hardware-claimed ones). Falls back to /sys/class/gpio if debugfs is
+    unreadable (e.g. not running as root).
     """
+    gpio_data = _parse_debugfs() or _parse_sysfs()
+
     states: list[str | None] = []
     for kind, bcm in _PINS:
-        if kind == "3v3":
-            states.append("3v3")
-        elif kind == "5v":
-            states.append("5v")
-        elif kind == "gnd":
-            states.append("gnd")
+        if kind != "gpio":
+            states.append(kind)
         else:
-            info = _read_bcm(bcm)
+            info = gpio_data.get(bcm)
             if info is None:
                 states.append(None)
             elif info["direction"] == "out":
