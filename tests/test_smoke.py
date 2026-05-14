@@ -22,8 +22,8 @@ def test_top_level_package_has_version():
 
 
 def test_all_monitor_modules_importable():
-    from porcupine.monitors import boot, power, cpu_mem, temperature, network
-    for mod in (boot, power, cpu_mem, temperature, network):
+    from porcupine.monitors import boot, power, cpu_mem, temperature, network, gpio_pins
+    for mod in (boot, power, cpu_mem, temperature, network, gpio_pins):
         assert callable(mod.read)
 
 
@@ -64,7 +64,7 @@ def test_help_lists_monitor_flags():
         [sys.executable, "-m", "porcupine", "--help"],
         capture_output=True, text=True,
     )
-    for flag in ("--boot", "--power", "--cpu", "--temp", "--net"):
+    for flag in ("--boot", "--power", "--cpu", "--temp", "--net", "--gpio"):
         assert flag in result.stdout
 
 
@@ -252,7 +252,8 @@ def test_test_sh_tests_all_interfaces():
     step2 = Path(__file__).parent.parent / "install" / "test.sh"
     text = step2.read_text()
     for subcmd in ("lcd", "buzzer", "button-short", "button-long",
-                   "monitor-boot", "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net"):
+                   "monitor-boot", "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net",
+                   "monitor-gpio"):
         assert subcmd in text, f"test.sh must invoke test_hardware.py {subcmd}"
 
 
@@ -267,7 +268,8 @@ def test_test_hardware_py_has_all_commands():
     hw = Path(__file__).parent.parent / "install" / "test_hardware.py"
     text = hw.read_text()
     for cmd in ("lcd", "buzzer", "button-short", "button-long",
-                "monitor-boot", "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net"):
+                "monitor-boot", "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net",
+                "monitor-gpio"):
         assert f'"{cmd}"' in text, f"test_hardware.py must handle command: {cmd}"
 
 

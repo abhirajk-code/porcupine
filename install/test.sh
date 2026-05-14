@@ -142,6 +142,10 @@ echo "  [Network]"
 "$PY" "$TEST_PY" monitor-net 2>/dev/null || echo "  (unavailable)"
 echo
 
+echo "  [GPIO pins]"
+"$PY" "$TEST_PY" monitor-gpio 2>/dev/null || echo "  (unavailable)"
+echo
+
 if confirm "Do all monitor readings look reasonable?"; then
     ok "Monitor readings"
 else
