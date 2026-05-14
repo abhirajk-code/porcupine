@@ -79,3 +79,57 @@ porcupine showlogs all     # full service journal
 ```
 
 Backed by `journalctl -u porcupine`. Use arrow keys to scroll, `q` to quit.
+
+---
+
+## Button
+
+The button is wired to BCM pin 4 (configurable). A short press is under 2 seconds; a long press is held past 2 seconds.
+
+| Action | Effect |
+|---|---|
+| Short press (LCD off) | Turn LCD back on |
+| Short press (LCD on) | Start a 5-second window; LCD turns off if no follow-up |
+| Short + short within 5 s | 20-second reboot countdown |
+| Short + long within 5 s | 20-second shutdown countdown |
+| Short press during countdown | Cancel countdown |
+
+Data collection always continues regardless of LCD state. The LCD turning off only cuts the backlight.
+
+---
+
+## Buzzer
+
+### Button feedback
+
+| Event | Pattern |
+|---|---|
+| Press-down | 1 × 150 ms — immediate confirmation the press registered |
+| Held past long-press threshold | 1 × 400 ms — cue to release for a long press |
+| Service startup | 1 × 150 ms |
+
+### Alert patterns
+
+Alerts fire when a threshold is first crossed, and again each time the LCD screen cycles to that monitor's screen while the condition persists. The alert is silenced once the value drops back below the threshold.
+
+| Condition | Pattern | Threshold setting |
+|---|---|---|
+| CPU temperature ≥ threshold | 3 × 200 ms with 100 ms gap | `sudo porcupine set temp-warn <°C>` |
+| CPU usage ≥ threshold | 2 × 200 ms with 100 ms gap | `sudo porcupine set cpu-warn <%>` |
+| Memory usage ≥ threshold | 2 × 200 ms with 100 ms gap | `sudo porcupine set mem-warn <%>` |
+| Battery < threshold | 1 × 600 ms | `sudo porcupine set bat-warn <%>` |
+
+Alerts only fire for monitors that are enabled. Disabling a monitor also silences its alert.
+
+---
+
+## LCD alert indicator
+
+When any threshold is currently exceeded, `!` is placed at column 16 (the last character) of the first line on every screen — a persistent visual indicator that something needs attention regardless of which screen is currently showing.
+
+```
+ CPU   Mem      !    ← alert active on any monitor
+ WARN   45%
+```
+
+Once all values drop below their thresholds the `!` disappears automatically.
