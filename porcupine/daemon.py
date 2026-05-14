@@ -1,5 +1,6 @@
 """Main event loop — wires monitors to interfaces."""
 import argparse
+import configparser
 import logging
 import math
 import queue
@@ -280,13 +281,14 @@ class _ButtonController:
     _WINDOW_S    = 5.0
     _COUNTDOWN_S = 20
 
-    def __init__(self, button: Button, lcd: LCD):
+    def __init__(self, button: Button, lcd: LCD, on_long_idle=None):
         self._lcd    = lcd
         self._lcd_on = True
         # idle | after_first | after_second_start | counting
         self._state  = "idle"
         self._window_timer: threading.Timer | None = None
         self._cancel = threading.Event()
+        self._on_long_idle = on_long_idle
 
         button.on_press_start(self._on_press_down)
         button.on_short_press(self._on_short)
@@ -320,6 +322,8 @@ class _ButtonController:
     def _on_long(self) -> None:
         if self._state == "after_second_start":
             self._begin_countdown("shutdown")
+        elif self._state == "idle" and self._on_long_idle:
+            self._on_long_idle()
 
     def _window_expired(self) -> None:
         self._lcd_on = False
@@ -463,7 +467,21 @@ def run(args: argparse.Namespace) -> None:
     if _only_alert and not initial_alerts:
         lcd.pause()
 
-    controller = _ButtonController(button, lcd)
+    def _toggle_only_alert() -> None:
+        cp = configparser.ConfigParser()
+        cp.read(args.config)
+        current = cp.getboolean("display", "only_alert", fallback=False)
+        if not cp.has_section("display"):
+            cp.add_section("display")
+        cp.set("display", "only_alert", "false" if current else "true")
+        with open(args.config, "w") as f:
+            cp.write(f)
+        label = "OFF" if current else "ON"
+        lcd.enter_menu("Only Alert", label)
+        time.sleep(1.5)
+        subprocess.run(["systemctl", "restart", "porcupine"], check=False)
+
+    controller = _ButtonController(button, lcd, on_long_idle=_toggle_only_alert)
 
     # Short beep on every press-down — immediate feedback that the press registered.
     button.on_press_start(lambda: _beep_async(count=1, duration_ms=150))

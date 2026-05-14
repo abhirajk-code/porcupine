@@ -94,6 +94,7 @@ The button is wired to BCM pin 4 (configurable). A short press is under 2 second
 | Short + short within 5 s | 20-second reboot countdown |
 | Short + long within 5 s | 20-second shutdown countdown |
 | Short press during countdown | Cancel countdown |
+| Long press (idle) | Toggle only-alert mode on/off (restarts service) |
 
 Data collection always continues regardless of LCD state. The LCD turning off only cuts the backlight.
 
