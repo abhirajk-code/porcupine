@@ -10,7 +10,7 @@ import threading
 import time
 
 from .interfaces.button import Button
-from .interfaces.buzzer import AlertChecker, Buzzer
+from .interfaces.buzzer import Buzzer
 from .interfaces.lcd import LCD
 from .monitors import boot, cpu_mem, gpio_pins, network, power, temperature
 
@@ -123,84 +123,191 @@ def _bps_str(bps: float) -> str:
     return f"{int(bps)}B"
 
 
-# ---------------------------------------------------------------------------
-# Alert → monitor flag mapping and per-alert beep patterns
-# ---------------------------------------------------------------------------
-
-_ALERT_TO_FLAG: dict[str, str] = {
-    "temp": "temp",
-    "cpu":  "cpu",
-    "mem":  "cpu",
-    "bat":  "power",
-}
-
-_ALERT_BEEP: dict[str, dict] = {
-    "temp": {"count": 3, "duration_ms": 200, "gap_ms": 100},
-    "cpu":  {"count": 2, "duration_ms": 200, "gap_ms": 100},
-    "mem":  {"count": 2, "duration_ms": 200, "gap_ms": 100},
-    "bat":  {"count": 1, "duration_ms": 600, "gap_ms":   0},
-}
-
-# Monitors that can ever have an alert — derived from _ALERT_TO_FLAG values.
-# Used by _apply_escalation to skip boot/net/gpio (which have no alert conditions).
-_ALERTABLE_FLAGS: frozenset[str] = frozenset(_ALERT_TO_FLAG.values())
+def _is_valid(value: object) -> bool:
+    return value is not None and not (isinstance(value, float) and math.isnan(value))
 
 
 # ---------------------------------------------------------------------------
-# Monitor registry  (flag name, module, formatter)
+# Monitor objects — own reading, formatting, breach detection, and beep pattern
 # ---------------------------------------------------------------------------
 
-_MONITOR_DEFS = [
-    ("boot",  boot,        _fmt_boot),
-    ("power", power,       _fmt_power),
-    ("cpu",   cpu_mem,     _fmt_cpu),
-    ("temp",  temperature, _fmt_temp),
-    ("net",   network,     _fmt_net),
-    ("gpio",  gpio_pins,   _fmt_gpio),
-]
+class _Monitor:
+    """Per-feature monitor with a uniform interface for the orchestrator."""
+    flag: str
+    every: int = 0  # set by _make_monitors; 0 = disabled
 
+    def read(self) -> dict:
+        raise NotImplementedError
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        raise NotImplementedError
+
+    def has_breach(self, data: dict) -> bool:
+        return False
+
+    def beep_pattern(self) -> dict | None:
+        return None
+
+
+class _BootMonitor(_Monitor):
+    flag = "boot"
+
+    def read(self) -> dict:
+        return boot.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        return [_fmt_boot(data)]
+
+
+class _PowerMonitor(_Monitor):
+    flag = "power"
+
+    def __init__(self, bat_warn: float = 40.0):
+        self._bat_warn = bat_warn
+
+    def read(self) -> dict:
+        return power.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        return [_fmt_power({**data, "bat_warn": self._bat_warn})]
+
+    def has_breach(self, data: dict) -> bool:
+        pct = data.get("battery_pct")
+        return (
+            _is_valid(pct)
+            and data.get("power_source") == "Battery"
+            and pct < self._bat_warn
+        )
+
+    def beep_pattern(self) -> dict:
+        return {"count": 1, "duration_ms": 600, "gap_ms": 0}
+
+
+class _CpuMemMonitor(_Monitor):
+    flag = "cpu"
+
+    def __init__(self, cpu_warn: float = 90.0, mem_warn: float = 90.0):
+        self._cpu_warn = cpu_warn
+        self._mem_warn = mem_warn
+
+    def read(self) -> dict:
+        return cpu_mem.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        return [_fmt_cpu({**data, "cpu_warn": self._cpu_warn, "mem_warn": self._mem_warn})]
+
+    def has_breach(self, data: dict) -> bool:
+        cpu = data.get("cpu_avg_pct")
+        mem = data.get("mem_pct")
+        return (
+            (_is_valid(cpu) and cpu >= self._cpu_warn)
+            or (_is_valid(mem) and mem >= self._mem_warn)
+        )
+
+    def beep_pattern(self) -> dict:
+        return {"count": 2, "duration_ms": 200, "gap_ms": 100}
+
+
+class _TempMonitor(_Monitor):
+    flag = "temp"
+
+    def __init__(self, temp_warn: float = 80.0):
+        self._temp_warn = temp_warn
+
+    def read(self) -> dict:
+        return temperature.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        return [_fmt_temp({**data, "temp_warn": self._temp_warn})]
+
+    def has_breach(self, data: dict) -> bool:
+        temp = data.get("cpu_temp_c")
+        return _is_valid(temp) and temp >= self._temp_warn
+
+    def beep_pattern(self) -> dict:
+        return {"count": 3, "duration_ms": 200, "gap_ms": 100}
+
+
+class _NetMonitor(_Monitor):
+    flag = "net"
+
+    def read(self) -> dict:
+        return network.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        return [_fmt_net(data)]
+
+
+class _GpioMonitor(_Monitor):
+    flag = "gpio"
+
+    def read(self) -> dict:
+        return gpio_pins.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        return _fmt_gpio(data)
+
+
+def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
+    """Create and return enabled Monitor instances, in display order."""
+    candidates: list[_Monitor] = [
+        _BootMonitor(),
+        _PowerMonitor(bat_warn=args.bat_warn),
+        _CpuMemMonitor(cpu_warn=args.cpu_warn, mem_warn=args.mem_warn),
+        _TempMonitor(temp_warn=args.temp_warn),
+        _NetMonitor(),
+        _GpioMonitor(),
+    ]
+    monitors = []
+    for m in candidates:
+        m.every = getattr(args, f"{m.flag}_every", 0)
+        if m.every > 0:
+            monitors.append(m)
+    return monitors
+
+
+# ---------------------------------------------------------------------------
+# Pipeline helpers
+# ---------------------------------------------------------------------------
 
 def _read_all(
-    args: argparse.Namespace,
+    monitors: list[_Monitor],
     r_cycle: int = 0,
     effective_every: "dict | None" = None,
 ) -> dict:
-    """Call read() on every enabled monitor whose cycle is due and merge results.
+    """Call read() on every monitor whose cycle is due and merge results.
 
-    At r_cycle=0 all enabled monitors are read regardless of their every value.
+    At r_cycle=0 all monitors are read regardless of their every value.
     """
     merged: dict = {}
-    for flag, module, _ in _MONITOR_DEFS:
-        base_every = getattr(args, f"{flag}_every", 0)
-        if base_every <= 0:
-            continue
-        every = (effective_every or {}).get(flag, base_every)
+    for m in monitors:
+        every = (effective_every or {}).get(m.flag, m.every)
         if r_cycle % every != 0:
             continue
         try:
-            merged.update(module.read())
+            merged.update(m.read())
         except Exception:
-            logging.warning("monitor %r read failed", flag, exc_info=True)
+            logging.warning("monitor %r read failed", m.flag, exc_info=True)
     return merged
 
 
 def _apply_escalation(
-    args: argparse.Namespace,
-    active_alerts: set[str],
+    monitors: list[_Monitor],
+    breached: set[str],
     effective_every: dict,
 ) -> None:
-    """Escalate to every=1 for monitors with active alerts; restore when clear."""
-    for flag in _ALERTABLE_FLAGS:
-        base_every = getattr(args, f"{flag}_every", 0)
-        if base_every <= 0:
+    """Escalate to every=1 for alertable monitors with active breaches; restore when clear."""
+    for m in monitors:
+        if m.beep_pattern() is None:
             continue
-        flag_has_alert = any(_ALERT_TO_FLAG.get(ak) == flag for ak in active_alerts)
-        effective_every[flag] = 1 if flag_has_alert else base_every
+        effective_every[m.flag] = 1 if m.flag in breached else m.every
 
 
-def _build_screens(args: argparse.Namespace, data: dict, d_cycle: int = 0) -> list[tuple[str, str]]:
+def _build_screens(
+    monitors: list[_Monitor], data: dict, d_cycle: int = 0
+) -> list[tuple[str, str]]:
     """Build the ordered LCD screen list from the latest monitor snapshot."""
-    screens, _ = _build_screens_tagged(args, data, d_cycle=d_cycle)
+    screens, _ = _build_screens_tagged(monitors, data, d_cycle=d_cycle)
     return screens
 
 
@@ -214,48 +321,33 @@ def _with_alert_indicator(
 
 
 def _build_screens_tagged(
-    args: argparse.Namespace, data: dict, d_cycle: int = 0
+    monitors: list[_Monitor], data: dict, d_cycle: int = 0
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """Like _build_screens but also returns a parallel list of monitor flag names.
 
-    The flag name identifies which monitor owns each screen so the alert checker
-    can fire only when that monitor's screen is currently displayed.
     d_cycle=0 always includes all enabled monitors (used at startup and in tests).
     """
-    data = {**data,
-            "temp_warn": getattr(args, "temp_warn", 80.0),
-            "cpu_warn":  getattr(args, "cpu_warn",  90.0),
-            "mem_warn":  getattr(args, "mem_warn",  90.0),
-            "bat_warn":  getattr(args, "bat_warn",  40.0)}
     screens: list[tuple[str, str]] = []
     tags: list[str] = []
-    for flag, _, formatter in _MONITOR_DEFS:
-        every = getattr(args, f"{flag}_every", 0)
-        if every <= 0:
+    for m in monitors:
+        if d_cycle % m.every != 0:
             continue
-        if d_cycle % every != 0:
-            continue
-        result = formatter(data)
-        if isinstance(result, list):
-            screens.extend(result)
-            tags.extend([flag] * len(result))
-        else:
-            screens.append(result)
-            tags.append(flag)
+        result = m.format_screens(data)
+        screens.extend(result)
+        tags.extend([m.flag] * len(result))
     if not screens:
         return [("No monitors", "enabled")], [""]
     return screens, tags
 
 
 def _filter_alert_screens(
-    screens: list[tuple[str, str]], tags: list[str], active_alerts: set[str]
+    screens: list[tuple[str, str]], tags: list[str], breached: set[str]
 ) -> tuple[list[tuple[str, str]], list[str]]:
-    """Return (screens, tags) restricted to monitors with active alerts.
+    """Return (screens, tags) restricted to monitors with active breaches.
 
     Falls back to the full list if no match is found (should not happen in practice).
     """
-    alert_flags = {_ALERT_TO_FLAG[k] for k in active_alerts if k in _ALERT_TO_FLAG}
-    pairs = [(s, t) for s, t in zip(screens, tags) if t in alert_flags]
+    pairs = [(s, t) for s, t in zip(screens, tags) if t in breached]
     if not pairs:
         return screens, tags
     return [s for s, _ in pairs], [t for _, t in pairs]
@@ -373,13 +465,137 @@ class _ButtonController:
 
 
 # ---------------------------------------------------------------------------
+# Notifier — owns display + buzzer decisions
+# ---------------------------------------------------------------------------
+
+class _Notifier:
+    """
+    Decides what to show on the LCD and when to beep, based on monitor breaches
+    and the only_alert / LCD-on state.  The orchestrator calls update() each
+    cycle; the LCD thread calls on_screen_advance() asynchronously.
+    """
+
+    def __init__(
+        self,
+        lcd: LCD,
+        beep_async,
+        controller: _ButtonController,
+        only_alert: bool,
+    ):
+        self._lcd          = lcd
+        self._beep_async   = beep_async
+        self._controller   = controller
+        self._only_alert   = only_alert
+        self._alert_lcd_on = False
+        self._lcd_wrapped  = threading.Event()
+        self._lock         = threading.Lock()
+        # State shared with the LCD thread via on_screen_advance
+        self._breached: set[str]               = set()
+        self._tags: list[str]                  = []
+        self._beep_patterns: dict[str, dict | None] = {}
+
+    def consume_wrap(self) -> bool:
+        """Return True (and reset) if the LCD completed a full rotation since last call."""
+        if self._lcd_wrapped.is_set():
+            self._lcd_wrapped.clear()
+            return True
+        return False
+
+    def on_screen_advance(self, index: int) -> None:
+        """Called by the LCD thread each time a new screen is rendered."""
+        if index == 0:
+            self._lcd_wrapped.set()
+        with self._lock:
+            breached = set(self._breached)
+            tags     = list(self._tags)
+            patterns = dict(self._beep_patterns)
+        if not breached or index >= len(tags):
+            return
+        flag = tags[index]
+        if flag in breached:
+            pattern = patterns.get(flag)
+            if pattern:
+                self._beep_async(**pattern)
+
+    def start(
+        self,
+        monitors: list[_Monitor],
+        data: dict,
+        breached: set[str],
+        refresh_s: float,
+    ) -> None:
+        """Build initial screens, start LCD cycling, and beep any initial breaches."""
+        screens, tags = _build_screens_tagged(monitors, data, d_cycle=0)
+        patterns = {m.flag: m.beep_pattern() for m in monitors if m.flag in breached}
+        if self._only_alert and breached:
+            display_screens, display_tags = _filter_alert_screens(screens, tags, breached)
+        else:
+            display_screens, display_tags = screens, tags
+        with self._lock:
+            self._breached      = breached
+            self._tags          = display_tags
+            self._beep_patterns = patterns
+        self._lcd.start(
+            _with_alert_indicator(display_screens, bool(breached)), refresh_s=refresh_s
+        )
+        if self._only_alert and not breached:
+            self._controller.set_lcd_on(False)
+        for flag in sorted(breached):
+            pattern = patterns.get(flag)
+            if pattern:
+                self._beep_async(**pattern)
+
+    def update(
+        self,
+        monitors: list[_Monitor],
+        data: dict,
+        new_breached: set[str],
+        d_cycle: int,
+    ) -> None:
+        """Refresh screens and beep any monitors that newly crossed their threshold."""
+        screens, tags = _build_screens_tagged(monitors, data, d_cycle=d_cycle)
+        patterns = {m.flag: m.beep_pattern() for m in monitors if m.flag in new_breached}
+        if self._only_alert and new_breached:
+            display_screens, display_tags = _filter_alert_screens(screens, tags, new_breached)
+        else:
+            display_screens, display_tags = screens, tags
+
+        # Beep for monitors that just crossed threshold (before updating self._breached)
+        for flag in sorted(new_breached - self._breached):
+            pattern = patterns.get(flag)
+            if pattern:
+                self._beep_async(**pattern)
+
+        with self._lock:
+            self._breached      = new_breached
+            self._tags          = display_tags
+            self._beep_patterns = patterns
+
+        if self._only_alert:
+            if new_breached:
+                self._lcd.update_screens(_with_alert_indicator(display_screens, True))
+                if not self._alert_lcd_on:
+                    self._controller.set_lcd_on(True)
+                    self._alert_lcd_on = True
+            elif self._alert_lcd_on:
+                self._controller.set_lcd_on(False)
+                self._alert_lcd_on = False
+        else:
+            self._lcd.update_screens(
+                _with_alert_indicator(display_screens, bool(new_breached))
+            )
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def run(args: argparse.Namespace) -> None:
-    enabled = [f for f, _, _ in _MONITOR_DEFS if getattr(args, f"{f}_every", 0) > 0]
-    if not enabled:
-        logging.warning("No monitors enabled — exiting. Re-enable with: sudo porcupine enable <monitor>")
+    monitors = _make_monitors(args)
+    if not monitors:
+        logging.warning(
+            "No monitors enabled — exiting. Re-enable with: sudo porcupine enable <monitor>"
+        )
         return
 
     def _on_sigterm(signum, frame):
@@ -394,18 +610,7 @@ def run(args: argparse.Namespace) -> None:
     lcd.load_custom_chars(_CGRAM)
     button = Button(pin=args.button_pin, long_press_ms=2000)
     buzzer = Buzzer(pin=args.buzzer_pin)
-    alert  = AlertChecker(
-        temp_warn=args.temp_warn,
-        cpu_warn=args.cpu_warn,
-        mem_warn=args.mem_warn,
-        bat_warn=args.bat_warn,
-        temp_enabled=args.temp_every > 0,
-        cpu_enabled=args.cpu_every > 0,
-        bat_enabled=args.power_every > 0,
-    )
 
-    # Persistent worker thread — GPIO callbacks just enqueue; no thread-spawn
-    # overhead per beep (which caused the ~80 ms press-start beep to be missed).
     _beep_q: queue.Queue = queue.Queue()
 
     def _beep_worker() -> None:
@@ -415,65 +620,12 @@ def run(args: argparse.Namespace) -> None:
                 break
             buzzer.beep(**item)
 
-    _beep_thread = threading.Thread(target=_beep_worker, daemon=True)
-    _beep_thread.start()
+    threading.Thread(target=_beep_worker, daemon=True).start()
 
-    def _beep_async(count: int, duration_ms: int, gap_ms: int = 0) -> None:
-        _beep_q.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
+    def _beep_async(**kwargs) -> None:
+        _beep_q.put(kwargs)
 
-    def _beep_alerts(alert_keys: set[str]) -> None:
-        for alert_key in sorted(alert_keys):
-            beep_kwargs = _ALERT_BEEP.get(alert_key)
-            if beep_kwargs:
-                _beep_async(**beep_kwargs)
-
-    # Two-counter escalation state
-    r_cycle = 0
-    d_cycle = 0           # increments each time the LCD completes a full rotation
-    _lcd_wrapped = threading.Event()
-    effective_every: dict = {
-        flag: getattr(args, f"{flag}_every", 0)
-        for flag, _, _ in _MONITOR_DEFS
-    }
-    active_alerts: set[str] = set()
-    _current_tags: list[str] = []
-    _state_lock = threading.Lock()
-
-    def _on_screen_advance(index: int) -> None:
-        # Called by the LCD thread each time a new screen is rendered.
-        # Signal a full-rotation wrap so the main loop can increment d_cycle.
-        # Beep only when the screen just shown belongs to a monitor with an active alert.
-        if index == 0:
-            _lcd_wrapped.set()
-        with _state_lock:
-            alerts_snapshot = set(active_alerts)
-            tags_snapshot = list(_current_tags)
-        if not alerts_snapshot or index >= len(tags_snapshot):
-            return
-        screen_flag = tags_snapshot[index]
-        for alert_key in sorted(alerts_snapshot):
-            if _ALERT_TO_FLAG.get(alert_key) == screen_flag:
-                beep_kwargs = _ALERT_BEEP.get(alert_key)
-                if beep_kwargs:
-                    _beep_async(**beep_kwargs)
-
-    lcd.on_screen_advance(_on_screen_advance)
-
-    _only_alert = getattr(args, "only_alert", False)
-    _alert_lcd_on = False
-
-    last_data: dict = _read_all(args, r_cycle=0, effective_every=effective_every)
-    initial_alerts = alert.check(last_data)
-    _apply_escalation(args, initial_alerts, effective_every)
-    _beep_alerts(initial_alerts)
-    screens, tags = _build_screens_tagged(args, last_data, d_cycle=0)
-    if _only_alert and initial_alerts:
-        screens, tags = _filter_alert_screens(screens, tags, initial_alerts)
-        _alert_lcd_on = True
-    with _state_lock:
-        active_alerts = initial_alerts
-        _current_tags = tags
-    lcd.start(_with_alert_indicator(screens, bool(initial_alerts)), refresh_s=args.refresh)
+    effective_every: dict = {m.flag: m.every for m in monitors}
 
     def _toggle_only_alert() -> None:
         cp = configparser.ConfigParser()
@@ -490,65 +642,50 @@ def run(args: argparse.Namespace) -> None:
         subprocess.run(["systemctl", "restart", "porcupine"], check=False)
 
     controller = _ButtonController(button, lcd, on_long_idle=_toggle_only_alert)
-    if _only_alert and not initial_alerts:
-        controller.set_lcd_on(False)
+    button.on_press_start(lambda: _beep_async(count=1, duration_ms=150, gap_ms=0))
+    button.on_held(lambda: _beep_async(count=1, duration_ms=400, gap_ms=0))
 
-    # Short beep on every press-down — immediate feedback that the press registered.
-    button.on_press_start(lambda: _beep_async(count=1, duration_ms=150))
-    # Long beep when held past the threshold — cues the user to release for long press.
-    button.on_held(lambda: _beep_async(count=1, duration_ms=400))
+    notifier = _Notifier(
+        lcd, _beep_async, controller,
+        only_alert=getattr(args, "only_alert", False),
+    )
+    lcd.on_screen_advance(notifier.on_screen_advance)
+
+    last_data = _read_all(monitors, r_cycle=0, effective_every=effective_every)
+    initial_breached = {m.flag for m in monitors if m.has_breach(last_data)}
+    _apply_escalation(monitors, initial_breached, effective_every)
+    notifier.start(monitors, last_data, initial_breached, refresh_s=args.refresh)
 
     button.start()
-    _beep_async(count=1, duration_ms=150)
+    _beep_async(count=1, duration_ms=150, gap_ms=0)
+
+    r_cycle = 0
+    d_cycle = 0
 
     try:
         while True:
             time.sleep(args.refresh)
             r_cycle += 1
 
-            wrapped = _lcd_wrapped.is_set()
+            wrapped = notifier.consume_wrap()
             if wrapped:
-                _lcd_wrapped.clear()
                 d_cycle += 1
 
-            data = _read_all(args, r_cycle=r_cycle, effective_every=effective_every)
+            data = _read_all(monitors, r_cycle=r_cycle, effective_every=effective_every)
             if not data and not wrapped:
                 continue
             if data:
                 last_data = {**last_data, **data}
 
-            new_alerts = alert.check(last_data)
-            _apply_escalation(args, new_alerts, effective_every)
+            breached = {m.flag for m in monitors if m.has_breach(last_data)}
+            _apply_escalation(monitors, breached, effective_every)
+            notifier.update(monitors, last_data, breached, d_cycle)
 
-            screens, tags = _build_screens_tagged(args, last_data, d_cycle=d_cycle)
-            if _only_alert and new_alerts:
-                display_screens, display_tags = _filter_alert_screens(screens, tags, new_alerts)
-            else:
-                display_screens, display_tags = screens, tags
-
-            with _state_lock:
-                prev_alerts = set(active_alerts)
-                active_alerts = new_alerts
-                _current_tags = display_tags
-
-            _beep_alerts(new_alerts - prev_alerts)
-
-            if _only_alert:
-                if new_alerts:
-                    lcd.update_screens(_with_alert_indicator(display_screens, True))
-                    if not _alert_lcd_on:
-                        controller.set_lcd_on(True)
-                        _alert_lcd_on = True
-                elif _alert_lcd_on:
-                    controller.set_lcd_on(False)
-                    _alert_lcd_on = False
-            elif controller.monitoring:
-                lcd.update_screens(_with_alert_indicator(display_screens, bool(new_alerts)))
     except KeyboardInterrupt:
         pass
     finally:
         buzzer.beep(count=1, duration_ms=150)
-        _beep_q.put(None)  # signal worker to exit
+        _beep_q.put(None)
         button.stop()
         lcd.stop()
         buzzer.cleanup()
