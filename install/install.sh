@@ -122,6 +122,7 @@ configure_interactive() {
     local d_cwarn;  d_cwarn="$(_cfg_get  alerts   cpu_warn   90)"
     local d_mwarn;  d_mwarn="$(_cfg_get  alerts   mem_warn   90)"
     local d_bwarn;  d_bwarn="$(_cfg_get  alerts   bat_warn   40)"
+    local d_only;   d_only="$(_cfg_get   display  only_alert false)"
 
     h2 "Hardware"
     prompt      "LCD I2C address  (hex ok, e.g. 0x27 or 0x3f)" "$d_lcd"   LCD_ADDR
@@ -131,6 +132,7 @@ configure_interactive() {
 
     h2 "Display"
     prompt      "Screen refresh interval in seconds"            "$d_ref"   REFRESH
+    prompt_bool "Only-alert mode (LCD off until threshold breach)" "$d_only" ONLY_ALERT
 
     h2 "Monitors  (y = enable, n = disable)"
     prompt_bool "Boot / uptime monitor"                         "$d_boot"  ENABLE_BOOT
@@ -149,6 +151,7 @@ configure_interactive() {
 
 configure_noninteractive() {
     LCD_ADDR="0x27"; BUTTON_PIN="4"; BUZZER_PIN="18"; INA219_ADDR="0x41"; REFRESH="5"
+    ONLY_ALERT="false"
     ENABLE_BOOT="true"; ENABLE_POWER="true"; ENABLE_CPU="true"; ENABLE_TEMP="true"
     ENABLE_NET="true"; ENABLE_GPIO="true"
     TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"; BAT_WARN="40"
@@ -185,7 +188,8 @@ buzzer_pin  = ${BUZZER_PIN}
 ina219_addr = ${INA219_ADDR}
 
 [display]
-refresh = ${REFRESH}
+refresh    = ${REFRESH}
+only_alert = ${ONLY_ALERT}
 
 [alerts]
 temp_warn = ${TEMP_WARN}
