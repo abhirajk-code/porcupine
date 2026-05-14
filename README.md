@@ -65,6 +65,7 @@ All `set` commands require `sudo` and restart the service automatically if it is
 | `sudo porcupine set temp-warn <°C>` | CPU temperature alert threshold | `80.0` |
 | `sudo porcupine set cpu-warn <%>` | CPU usage alert threshold | `90.0` |
 | `sudo porcupine set mem-warn <%>` | Memory usage alert threshold | `90.0` |
+| `sudo porcupine set bat-warn <%>` | Battery level alert threshold | `40.0` |
 | `sudo porcupine set lcd-addr <hex>` | LCD I2C address | `0x27` |
 | `sudo porcupine set ina219-addr <hex>` | INA219 battery monitor I2C address | `0x41` |
 | `sudo porcupine set button-pin <n>` | Button GPIO pin (BCM numbering) | `4` |

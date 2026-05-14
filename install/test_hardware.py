@@ -265,6 +265,18 @@ def cmd_monitor_net() -> None:
     print(f"  TX total  : {data['tx_total_mb']:.1f} MB")
 
 
+def cmd_monitor_gpio() -> None:
+    from porcupine.monitors import gpio_pins
+    data = gpio_pins.read()
+    pins = data["gpio_pins"]
+    exported = [(i + 1, s) for i, s in enumerate(pins) if s not in ("3v3", "5v", "gnd", None)]
+    print(f"  Exported GPIO pins : {len(exported)}")
+    for phys, state in exported[:8]:
+        print(f"    Pin {phys:2d}: {state}")
+    if not exported:
+        print("  (no GPIO pins currently exported via sysfs)")
+
+
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
@@ -279,6 +291,7 @@ _COMMANDS = {
     "monitor-cpu":   lambda cfg: cmd_monitor_cpu(),
     "monitor-temp":  lambda cfg: cmd_monitor_temp(),
     "monitor-net":   lambda cfg: cmd_monitor_net(),
+    "monitor-gpio":  lambda cfg: cmd_monitor_gpio(),
 }
 
 if __name__ == "__main__":
