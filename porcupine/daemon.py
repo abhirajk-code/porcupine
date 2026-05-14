@@ -247,24 +247,27 @@ def _build_screens_tagged(
 
 class _ButtonController:
     """
-    Three button-press sequences:
-      1. Short press                  — toggle monitoring (backlight + screen cycling)
-      2. Short + short press (< 3 s)  — 20-second reboot countdown
-      3. Short + long press  (< 3 s)  — 20-second shutdown countdown
+    Button press sequences:
+      1. Short press (LCD on)         — start 5-second window; if no follow-up,
+                                        turn off LCD backlight (monitoring continues)
+      2. Short press (LCD off)        — turn LCD back on
+      3. Short + short press (< 5 s)  — 20-second reboot countdown
+      4. Short + long press  (< 5 s)  — 20-second shutdown countdown
 
-    During a countdown, a long press cancels it.
+    During a countdown, a short press cancels it.
+    Data collection always continues regardless of LCD state.
     """
 
-    _WINDOW_S    = 3.0
+    _WINDOW_S    = 5.0
     _COUNTDOWN_S = 20
 
     def __init__(self, button: Button, lcd: LCD):
-        self._lcd        = lcd
-        self._monitoring = True
+        self._lcd    = lcd
+        self._lcd_on = True
         # idle | after_first | after_second_start | counting
-        self._state      = "idle"
+        self._state  = "idle"
         self._window_timer: threading.Timer | None = None
-        self._cancel     = threading.Event()
+        self._cancel = threading.Event()
 
         button.on_press_start(self._on_press_down)
         button.on_short_press(self._on_short)
@@ -272,21 +275,24 @@ class _ButtonController:
 
     @property
     def monitoring(self) -> bool:
-        return self._monitoring
+        return True  # data collection never stops; only the LCD turns off
 
     def _on_press_down(self) -> None:
-        # Cancel the 3-second window as soon as a second press begins so the
-        # full long-press duration (2 s) doesn't eat into the window.
+        # Cancel the window as soon as a second press begins so the full
+        # long-press duration (2 s) doesn't eat into the follow-up window.
         if self._state == "after_first":
             self._cancel_window()
             self._state = "after_second_start"
 
     def _on_short(self) -> None:
         if self._state == "idle":
-            self._toggle()
-            self._state = "after_first"
-            self._window_timer = threading.Timer(self._WINDOW_S, self._window_expired)
-            self._window_timer.start()
+            if not self._lcd_on:
+                self._lcd_on = True
+                self._lcd.resume()
+            else:
+                self._state = "after_first"
+                self._window_timer = threading.Timer(self._WINDOW_S, self._window_expired)
+                self._window_timer.start()
         elif self._state == "after_second_start":
             self._begin_countdown("reboot")
         elif self._state == "counting":
@@ -297,6 +303,8 @@ class _ButtonController:
             self._begin_countdown("shutdown")
 
     def _window_expired(self) -> None:
+        self._lcd_on = False
+        self._lcd.pause()
         self._state = "idle"
 
     def _cancel_window(self) -> None:
@@ -304,17 +312,10 @@ class _ButtonController:
             self._window_timer.cancel()
             self._window_timer = None
 
-    def _toggle(self) -> None:
-        self._monitoring = not self._monitoring
-        if self._monitoring:
-            self._lcd.resume()
-        else:
-            self._lcd.pause()
-
     def _begin_countdown(self, action: str) -> None:
         self._state = "counting"
-        if not self._monitoring:
-            self._monitoring = True
+        if not self._lcd_on:
+            self._lcd_on = True
             self._lcd.resume()
         self._cancel.clear()
         line1 = "Rebooting..." if action == "reboot" else "Shutdown"
