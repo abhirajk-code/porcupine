@@ -164,6 +164,11 @@ class LCD:
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(line2[: self._cols])
 
+    @property
+    def frozen(self) -> bool:
+        with self._lock:
+            return self._frozen
+
     def _cycle_loop(self, refresh_s: float) -> None:
         while not self._stop_event.wait(timeout=refresh_s):
             screen_cb = None
@@ -172,8 +177,8 @@ class LCD:
                 if not self._in_menu:
                     if not self._frozen:
                         self._index = (self._index + 1) % max(len(self._screens), 1)
-                        screen_cb = self._screen_cb
-                        idx = self._index
+                    screen_cb = self._screen_cb
+                    idx = self._index
                     if self._display_enabled:
                         self._render_current()
             if screen_cb is not None:

@@ -361,7 +361,7 @@ class _Notifier:
 
     def on_screen_advance(self, index: int) -> None:
         """Called by the LCD thread each time a new screen is rendered."""
-        if index == 0:
+        if index == 0 and not self._lcd.frozen:
             self._lcd_wrapped.set()
         with self._lock:
             breached = set(self._breached)
