@@ -30,6 +30,7 @@ class LCD:
         self._thread: threading.Thread | None = None
         self._refresh_s: float = 3.0
         self._screen_cb: Callable | None = None
+        self._display_enabled: bool = True
 
         if _HAS_RPLCD:
             self._lcd = CharLCD(
@@ -53,6 +54,7 @@ class LCD:
         with self._lock:
             self._screens = screens
             self._index = 0
+            self._display_enabled = True
         self._stop_event.clear()
         self._thread = threading.Thread(
             target=self._cycle_loop, args=(refresh_s,), daemon=True
@@ -68,25 +70,18 @@ class LCD:
             self._lcd.backlight_enabled = False
 
     def pause(self) -> None:
-        """Stop cycling, clear display, and turn off backlight."""
-        self._stop_event.set()
-        if self._thread:
-            self._thread.join(timeout=2)
-            self._thread = None
+        """Turn off backlight and stop rendering; cycle loop and callbacks continue."""
         with self._lock:
+            self._display_enabled = False
             self._lcd.clear()
             self._lcd.backlight_enabled = False
 
     def resume(self) -> None:
-        """Turn on backlight, render current screen, and restart cycling."""
+        """Turn on backlight and resume rendering at the current screen position."""
         with self._lock:
+            self._display_enabled = True
             self._lcd.backlight_enabled = True
             self._render_current()
-        self._stop_event.clear()
-        self._thread = threading.Thread(
-            target=self._cycle_loop, args=(self._refresh_s,), daemon=True
-        )
-        self._thread.start()
 
     def next_screen(self) -> None:
         """Advance to the next screen (called from button short-press)."""
@@ -165,7 +160,8 @@ class LCD:
             with self._lock:
                 if not self._in_menu:
                     self._index = (self._index + 1) % max(len(self._screens), 1)
-                    self._render_current()
+                    if self._display_enabled:
+                        self._render_current()
                     screen_cb = self._screen_cb
                     idx = self._index
             if screen_cb is not None:

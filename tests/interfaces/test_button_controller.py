@@ -178,3 +178,44 @@ def test_second_press_down_cancels_window_timer():
     cbs["press_start"]()   # second press begins
     mock_timer.cancel.assert_called_once()
     assert ctrl._state == "after_second_start"
+
+
+# ---------------------------------------------------------------------------
+# set_lcd_on — external sync (used by only_alert logic)
+# ---------------------------------------------------------------------------
+
+def test_set_lcd_on_true_resumes_when_off():
+    ctrl, cbs, lcd = _make_controller()
+    ctrl._lcd_on = False
+    ctrl.set_lcd_on(True)
+    lcd.resume.assert_called_once()
+    assert ctrl._lcd_on is True
+
+
+def test_set_lcd_on_false_pauses_when_on():
+    ctrl, cbs, lcd = _make_controller()
+    ctrl._lcd_on = True
+    ctrl.set_lcd_on(False)
+    lcd.pause.assert_called_once()
+    assert ctrl._lcd_on is False
+
+
+def test_set_lcd_on_no_op_when_already_matches():
+    ctrl, cbs, lcd = _make_controller()
+    ctrl._lcd_on = True
+    ctrl.set_lcd_on(True)   # already on — no LCD call
+    lcd.resume.assert_not_called()
+    lcd.pause.assert_not_called()
+
+    ctrl._lcd_on = False
+    ctrl.set_lcd_on(False)  # already off — no LCD call
+    lcd.resume.assert_not_called()
+    lcd.pause.assert_not_called()
+
+
+def test_set_lcd_on_does_not_change_fsm_state():
+    ctrl, cbs, lcd = _make_controller()
+    ctrl._state = "after_first"
+    ctrl._lcd_on = False
+    ctrl.set_lcd_on(True)
+    assert ctrl._state == "after_first"   # FSM untouched

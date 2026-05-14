@@ -127,6 +127,56 @@ def test_update_screens_clamps_index(lcd):
 
 
 # ------------------------------------------------------------------
+# pause / resume — cycle loop stays alive
+# ------------------------------------------------------------------
+
+def test_pause_keeps_cycle_thread_running(lcd):
+    lcd.start([("A", "1"), ("B", "2")], refresh_s=60)
+    lcd.pause()
+    assert lcd._thread is not None
+    assert lcd._thread.is_alive()
+    assert lcd._display_enabled is False
+
+
+def test_pause_clears_display_and_kills_backlight(lcd):
+    lcd.start([("A", "1")], refresh_s=60)
+    lcd.show("Hello", "World")
+    lcd.pause()
+    # Stub always returns backlight=True, but display should be blank after clear
+    assert lcd._display_enabled is False
+
+
+def test_resume_re_enables_display(lcd):
+    lcd.start([("A", "1"), ("B", "2")], refresh_s=60)
+    lcd.pause()
+    lcd.resume()
+    assert lcd._display_enabled is True
+    assert lcd._thread is not None
+    assert lcd._thread.is_alive()
+
+
+def test_callback_fires_while_paused(lcd):
+    """_on_screen_advance must fire even when display is off."""
+    fired = []
+    lcd.on_screen_advance(fired.append)
+    lcd.start([("A", "1"), ("B", "2")], refresh_s=0.05)
+    lcd.pause()
+    time.sleep(0.2)
+    assert len(fired) >= 1
+
+
+def test_display_not_updated_while_paused(lcd):
+    """_index advances but hardware is not written while paused."""
+    lcd.start([("A", "1"), ("B", "2")], refresh_s=0.05)
+    lcd.pause()
+    before = _display(lcd)
+    time.sleep(0.2)
+    # Display content must not change while paused (hardware stays blank/cleared)
+    after = _display(lcd)
+    assert before == after
+
+
+# ------------------------------------------------------------------
 # _StubLCD
 # ------------------------------------------------------------------
 

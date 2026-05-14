@@ -325,6 +325,16 @@ class _ButtonController:
         elif self._state == "idle" and self._on_long_idle:
             self._on_long_idle()
 
+    def set_lcd_on(self, state: bool) -> None:
+        """Sync LCD on/off from external code (e.g. only_alert logic) without disturbing FSM state."""
+        if state == self._lcd_on:
+            return
+        self._lcd_on = state
+        if state:
+            self._lcd.resume()
+        else:
+            self._lcd.pause()
+
     def _window_expired(self) -> None:
         self._lcd_on = False
         self._lcd.pause()
@@ -464,8 +474,6 @@ def run(args: argparse.Namespace) -> None:
         active_alerts = initial_alerts
         _current_tags = tags
     lcd.start(_with_alert_indicator(screens, bool(initial_alerts)), refresh_s=args.refresh)
-    if _only_alert and not initial_alerts:
-        lcd.pause()
 
     def _toggle_only_alert() -> None:
         cp = configparser.ConfigParser()
@@ -482,6 +490,8 @@ def run(args: argparse.Namespace) -> None:
         subprocess.run(["systemctl", "restart", "porcupine"], check=False)
 
     controller = _ButtonController(button, lcd, on_long_idle=_toggle_only_alert)
+    if _only_alert and not initial_alerts:
+        controller.set_lcd_on(False)
 
     # Short beep on every press-down — immediate feedback that the press registered.
     button.on_press_start(lambda: _beep_async(count=1, duration_ms=150))
@@ -527,10 +537,10 @@ def run(args: argparse.Namespace) -> None:
                 if new_alerts:
                     lcd.update_screens(_with_alert_indicator(display_screens, True))
                     if not _alert_lcd_on:
-                        lcd.resume()
+                        controller.set_lcd_on(True)
                         _alert_lcd_on = True
                 elif _alert_lcd_on:
-                    lcd.pause()
+                    controller.set_lcd_on(False)
                     _alert_lcd_on = False
             elif controller.monitoring:
                 lcd.update_screens(_with_alert_indicator(display_screens, bool(new_alerts)))
