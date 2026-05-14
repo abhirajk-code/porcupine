@@ -91,6 +91,7 @@ cmd_status() {
 
     printf "\nDisplay:\n"
     printf "  %-14s %s\n" "refresh"     "$(cfg_get display refresh 5.0)"
+    printf "  %-14s %s\n" "only_alert"  "$(cfg_get display only_alert false)"
 
     printf "\nAlerts:\n"
     printf "  %-14s %s\n" "temp_warn"   "$(cfg_get alerts temp_warn 80.0)"
@@ -145,6 +146,7 @@ cmd_set() {
     need_root "set $param $value"
     case $param in
         refresh)          cfg_set display  refresh       "$value";;
+        only-alert)       cfg_set display  only_alert    "$value";;
         temp-warn)        cfg_set alerts   temp_warn     "$value";;
         cpu-warn)         cfg_set alerts   cpu_warn      "$value";;
         mem-warn)         cfg_set alerts   mem_warn      "$value";;
@@ -179,6 +181,7 @@ Commands:
   disable <monitor>        Disable a monitor (boot|power|cpu|temp|net|gpio)
 
   set refresh <seconds>    Time between display pages (default 5)
+  set only-alert <true|false>  LCD off until a threshold breaches (default false)
   set temp-warn <°C>       CPU temperature warning threshold
   set cpu-warn <%>         CPU usage warning threshold
   set mem-warn <%>         Memory usage warning threshold

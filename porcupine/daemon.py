@@ -246,6 +246,20 @@ def _build_screens_tagged(
     return screens, tags
 
 
+def _filter_alert_screens(
+    screens: list[tuple[str, str]], tags: list[str], active_alerts: set[str]
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Return (screens, tags) restricted to monitors with active alerts.
+
+    Falls back to the full list if no match is found (should not happen in practice).
+    """
+    alert_flags = {_ALERT_TO_FLAG[k] for k in active_alerts if k in _ALERT_TO_FLAG}
+    pairs = [(s, t) for s, t in zip(screens, tags) if t in alert_flags]
+    if not pairs:
+        return screens, tags
+    return [s for s, _ in pairs], [t for _, t in pairs]
+
+
 # ---------------------------------------------------------------------------
 # Button controller
 # ---------------------------------------------------------------------------
@@ -431,15 +445,23 @@ def run(args: argparse.Namespace) -> None:
 
     lcd.on_screen_advance(_on_screen_advance)
 
+    _only_alert = getattr(args, "only_alert", False)
+    _alert_lcd_on = False
+
     last_data: dict = _read_all(args, r_cycle=0, effective_every=effective_every)
     initial_alerts = alert.check(last_data)
     _apply_escalation(args, initial_alerts, effective_every)
     _beep_alerts(initial_alerts)
     screens, tags = _build_screens_tagged(args, last_data, d_cycle=0)
+    if _only_alert and initial_alerts:
+        screens, tags = _filter_alert_screens(screens, tags, initial_alerts)
+        _alert_lcd_on = True
     with _state_lock:
         active_alerts = initial_alerts
         _current_tags = tags
     lcd.start(_with_alert_indicator(screens, bool(initial_alerts)), refresh_s=args.refresh)
+    if _only_alert and not initial_alerts:
+        lcd.pause()
 
     controller = _ButtonController(button, lcd)
 
@@ -471,15 +493,29 @@ def run(args: argparse.Namespace) -> None:
             _apply_escalation(args, new_alerts, effective_every)
 
             screens, tags = _build_screens_tagged(args, last_data, d_cycle=d_cycle)
+            if _only_alert and new_alerts:
+                display_screens, display_tags = _filter_alert_screens(screens, tags, new_alerts)
+            else:
+                display_screens, display_tags = screens, tags
+
             with _state_lock:
                 prev_alerts = set(active_alerts)
                 active_alerts = new_alerts
-                _current_tags = tags
+                _current_tags = display_tags
 
             _beep_alerts(new_alerts - prev_alerts)
 
-            if controller.monitoring:
-                lcd.update_screens(_with_alert_indicator(screens, bool(new_alerts)))
+            if _only_alert:
+                if new_alerts:
+                    lcd.update_screens(_with_alert_indicator(display_screens, True))
+                    if not _alert_lcd_on:
+                        lcd.resume()
+                        _alert_lcd_on = True
+                elif _alert_lcd_on:
+                    lcd.pause()
+                    _alert_lcd_on = False
+            elif controller.monitoring:
+                lcd.update_screens(_with_alert_indicator(display_screens, bool(new_alerts)))
     except KeyboardInterrupt:
         pass
     finally:

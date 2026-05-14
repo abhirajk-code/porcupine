@@ -24,6 +24,8 @@ ina219_addr = 0x41
 [display]
 # Seconds between automatic screen transitions.
 refresh = 5
+# LCD stays off until a threshold is breached; shows only the breached monitor(s).
+only_alert = false
 
 [alerts]
 # Thresholds that trigger buzzer alerts.

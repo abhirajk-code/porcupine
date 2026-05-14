@@ -62,6 +62,7 @@ All `set` commands require `sudo` and restart the service automatically if it is
 | Command | Description | Default |
 |---|---|---|
 | `sudo porcupine set refresh <seconds>` | Time between display pages | `5.0` |
+| `sudo porcupine set only-alert <true\|false>` | LCD-off-until-breach mode | `false` |
 | `sudo porcupine set temp-warn <°C>` | CPU temperature alert threshold | `80.0` |
 | `sudo porcupine set cpu-warn <%>` | CPU usage alert threshold | `90.0` |
 | `sudo porcupine set mem-warn <%>` | Memory usage alert threshold | `90.0` |
@@ -133,3 +134,19 @@ When any threshold is currently exceeded, `!` is placed at column 16 (the last c
 ```
 
 Once all values drop below their thresholds the `!` disappears automatically.
+
+---
+
+## Only-alert mode
+
+```bash
+sudo porcupine set only-alert true
+```
+
+When `only_alert` is enabled the LCD stays off as long as all monitored values are within their thresholds. As soon as any threshold is breached:
+
+- The LCD turns on automatically.
+- Only the screen(s) for the breached monitor are shown (not the full rotation).
+- The buzzer fires as normal.
+
+Once all values return below their thresholds the LCD turns off again. The button still works while the LCD is on: short press starts the 5-second off-timer, and the reboot/shutdown sequences behave as usual.

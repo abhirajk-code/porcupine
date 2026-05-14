@@ -47,6 +47,8 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     # [display]
     if cp.has_option("display", "refresh"):
         result["refresh"] = cp.getfloat("display", "refresh")
+    if cp.has_option("display", "only_alert"):
+        result["only_alert"] = cp.getboolean("display", "only_alert")
 
     # [alerts]
     for key in ("temp_warn", "cpu_warn", "mem_warn", "bat_warn"):
@@ -132,6 +134,11 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         default=file_cfg.get("bat_warn", 40.0),
         metavar="PCT",
         help="Battery percentage below which to warn (default 40)",
+    )
+    parser.add_argument(
+        "--only-alert", action="store_true",
+        default=file_cfg.get("only_alert", False),
+        help="LCD stays off until a threshold is breached; shows only the breached monitor(s)",
     )
     parser.add_argument(
         "--config",
