@@ -172,10 +172,10 @@ class LCD:
                 if not self._in_menu:
                     if not self._frozen:
                         self._index = (self._index + 1) % max(len(self._screens), 1)
+                        screen_cb = self._screen_cb
+                        idx = self._index
                     if self._display_enabled:
                         self._render_current()
-                    screen_cb = self._screen_cb
-                    idx = self._index
             if screen_cb is not None:
                 screen_cb(idx)
 
