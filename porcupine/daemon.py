@@ -349,6 +349,11 @@ class _ButtonController:
 # ---------------------------------------------------------------------------
 
 def run(args: argparse.Namespace) -> None:
+    enabled = [f for f, _, _ in _MONITOR_DEFS if getattr(args, f"{f}_every", 0) > 0]
+    if not enabled:
+        logging.warning("No monitors enabled — exiting. Re-enable with: sudo porcupine enable <monitor>")
+        return
+
     def _on_sigterm(signum, frame):
         raise KeyboardInterrupt
 
