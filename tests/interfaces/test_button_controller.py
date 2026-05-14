@@ -1,10 +1,10 @@
-"""Unit tests for _ButtonController (daemon.py)."""
+"""Unit tests for ButtonController (interfaces/button_controller.py)."""
 import threading
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from porcupine.daemon import _ButtonController
+from porcupine.interfaces.button_controller import ButtonController
 
 
 # ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ def _make_controller():
     button.on_short_press.side_effect = _on_short_press
     button.on_long_press.side_effect  = _on_long_press
 
-    ctrl = _ButtonController(button, lcd)
+    ctrl = ButtonController(button, lcd)
     return ctrl, cbs, lcd
 
 
@@ -69,7 +69,7 @@ def test_short_press_does_not_immediately_pause_lcd():
 
 def test_short_press_starts_window_timer():
     ctrl, cbs, lcd = _make_controller()
-    with patch("porcupine.daemon.threading.Timer") as MockTimer:
+    with patch("porcupine.interfaces.button_controller.threading.Timer") as MockTimer:
         mock_timer = MagicMock()
         MockTimer.return_value = mock_timer
         _short(cbs)
@@ -102,7 +102,7 @@ def test_short_press_when_lcd_off_does_not_start_window():
     ctrl, cbs, lcd = _make_controller()
     ctrl._lcd_on = False
     ctrl._state  = "idle"
-    with patch("porcupine.daemon.threading.Timer") as MockTimer:
+    with patch("porcupine.interfaces.button_controller.threading.Timer") as MockTimer:
         _short(cbs)
     MockTimer.assert_not_called()
 
@@ -113,10 +113,10 @@ def test_short_press_when_lcd_off_does_not_start_window():
 
 def test_short_short_starts_reboot_countdown():
     ctrl, cbs, lcd = _make_controller()
-    with patch("porcupine.daemon.threading.Timer") as MockTimer:
+    with patch("porcupine.interfaces.button_controller.threading.Timer") as MockTimer:
         MockTimer.return_value = MagicMock()
         _short(cbs)           # first press — opens window
-    with patch("porcupine.daemon.threading.Thread") as MockThread:
+    with patch("porcupine.interfaces.button_controller.threading.Thread") as MockThread:
         MockThread.return_value = MagicMock()
         _short(cbs)           # second short — reboot
     lcd.enter_menu.assert_called_once()
@@ -129,10 +129,10 @@ def test_short_short_starts_reboot_countdown():
 
 def test_short_long_starts_shutdown_countdown():
     ctrl, cbs, lcd = _make_controller()
-    with patch("porcupine.daemon.threading.Timer") as MockTimer:
+    with patch("porcupine.interfaces.button_controller.threading.Timer") as MockTimer:
         MockTimer.return_value = MagicMock()
         _short(cbs)           # first press — opens window
-    with patch("porcupine.daemon.threading.Thread") as MockThread:
+    with patch("porcupine.interfaces.button_controller.threading.Thread") as MockThread:
         MockThread.return_value = MagicMock()
         _long(cbs)            # long press — shutdown
     lcd.enter_menu.assert_called_once()
@@ -147,7 +147,7 @@ def test_countdown_resumes_lcd_when_off():
     ctrl, cbs, lcd = _make_controller()
     ctrl._lcd_on = False
     ctrl._state  = "after_second_start"
-    with patch("porcupine.daemon.threading.Thread") as MockThread:
+    with patch("porcupine.interfaces.button_controller.threading.Thread") as MockThread:
         MockThread.return_value = MagicMock()
         _short(cbs)           # second short → reboot while LCD is off
     lcd.resume.assert_called_once()

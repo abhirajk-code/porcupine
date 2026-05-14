@@ -3,13 +3,13 @@ import argparse
 import configparser
 import logging
 import math
-import queue
 import signal
 import subprocess
 import threading
 import time
 
 from .interfaces.button import Button
+from .interfaces.button_controller import ButtonController
 from .interfaces.buzzer import Buzzer
 from .interfaces.lcd import LCD
 from .monitors import boot, cpu_mem, gpio_pins, network, power, temperature
@@ -45,69 +45,6 @@ _GPIO_CHARS: dict[str | None, str] = {
     "in_l":  chr(3),
     None:    " ",
 }
-
-
-# ---------------------------------------------------------------------------
-# Screen formatters — each returns (line1, line2) for the LCD
-# ---------------------------------------------------------------------------
-
-def _fmt_boot(data: dict) -> tuple[str, str]:
-    uptime = int(data.get("uptime_s", 0))
-    return "Boot", f"#{data.get('boot_count', 0)} {uptime // 3600}h{uptime % 3600 // 60:02d}m"
-
-
-def _fmt_power(data: dict) -> tuple[str, str]:
-    source = data.get("power_source", "Unknown")
-    pct = data.get("battery_pct", float("nan"))
-    bat_warn = data.get("bat_warn", 40.0)
-    if not math.isnan(pct):
-        warn = source == "Battery" and pct < bat_warn
-        suffix = f" {pct:.0f}%" + (" WARN" if warn else "")
-    else:
-        suffix = ""
-    return "Power", f"{source}{suffix}"
-
-
-def _fmt_cpu(data: dict) -> tuple[str, str]:
-    cpu  = data.get("cpu_avg_pct", 0)
-    mem  = data.get("mem_pct", 0)
-    cpu_s = "WARN" if cpu >= data.get("cpu_warn", 90.0) else f"{cpu:.0f}%"
-    mem_s = "WARN" if mem >= data.get("mem_warn", 90.0) else f"{mem:.0f}%"
-    return " CPU   Mem", f"{cpu_s:>4}  {mem_s:>4}"
-
-
-def _fmt_temp(data: dict) -> tuple[str, str]:
-    temp = data.get("cpu_temp_c", float("nan"))
-    warn = data.get("temp_warn", 80.0)
-    if not math.isnan(temp):
-        temp_str = f"{temp:.0f}C" if temp >= 100 else f"{temp:.1f}C"
-        suffix = " WARN" if temp >= warn else ""
-    else:
-        temp_str = "---"
-        suffix = ""
-    return ("Temperature", f"{temp_str}{suffix}")
-
-
-def _fmt_net(data: dict) -> tuple[str, str]:
-    return (
-        f"Net {data.get('interface', '???')[:5]}",
-        f"R:{_bps_str(data.get('rx_bps', 0))} T:{_bps_str(data.get('tx_bps', 0))}",
-    )
-
-
-def _fmt_gpio(data: dict) -> list[tuple[str, str]]:
-    pins = data.get("gpio_pins", [])
-    chars = [_GPIO_CHARS.get(s, " ") for s in pins]
-    chars += [" "] * (40 - len(chars))
-
-    def _row(indices: range, first_pin: int, last_pin: int) -> str:
-        return f"{first_pin:02d}[{''.join(chars[i] for i in indices)}]{last_pin:02d}"
-
-    return [
-        (_row(range( 0, 20, 2),  1, 19), _row(range( 1, 20, 2),  2, 20)),  # pins  1–20
-        (_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40)),  # pins 21–40
-    ]
-
 
 _KB = 1024
 _MB = 1024 * 1024
@@ -156,7 +93,8 @@ class _BootMonitor(_Monitor):
         return boot.read()
 
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        return [_fmt_boot(data)]
+        uptime = int(data.get("uptime_s", 0))
+        return [("Boot", f"#{data.get('boot_count', 0)} {uptime // 3600}h{uptime % 3600 // 60:02d}m")]
 
 
 class _PowerMonitor(_Monitor):
@@ -169,7 +107,14 @@ class _PowerMonitor(_Monitor):
         return power.read()
 
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        return [_fmt_power({**data, "bat_warn": self._bat_warn})]
+        source = data.get("power_source", "Unknown")
+        pct    = data.get("battery_pct", float("nan"))
+        if not math.isnan(pct):
+            warn   = source == "Battery" and pct < self._bat_warn
+            suffix = f" {pct:.0f}%" + (" WARN" if warn else "")
+        else:
+            suffix = ""
+        return [("Power", f"{source}{suffix}")]
 
     def has_breach(self, data: dict) -> bool:
         pct = data.get("battery_pct")
@@ -194,7 +139,11 @@ class _CpuMemMonitor(_Monitor):
         return cpu_mem.read()
 
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        return [_fmt_cpu({**data, "cpu_warn": self._cpu_warn, "mem_warn": self._mem_warn})]
+        cpu   = data.get("cpu_avg_pct", 0)
+        mem   = data.get("mem_pct", 0)
+        cpu_s = "WARN" if cpu >= self._cpu_warn else f"{cpu:.0f}%"
+        mem_s = "WARN" if mem >= self._mem_warn else f"{mem:.0f}%"
+        return [(" CPU   Mem", f"{cpu_s:>4}  {mem_s:>4}")]
 
     def has_breach(self, data: dict) -> bool:
         cpu = data.get("cpu_avg_pct")
@@ -218,7 +167,14 @@ class _TempMonitor(_Monitor):
         return temperature.read()
 
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        return [_fmt_temp({**data, "temp_warn": self._temp_warn})]
+        temp = data.get("cpu_temp_c", float("nan"))
+        if not math.isnan(temp):
+            temp_str = f"{temp:.0f}C" if temp >= 100 else f"{temp:.1f}C"
+            suffix   = " WARN" if temp >= self._temp_warn else ""
+        else:
+            temp_str = "---"
+            suffix   = ""
+        return [("Temperature", f"{temp_str}{suffix}")]
 
     def has_breach(self, data: dict) -> bool:
         temp = data.get("cpu_temp_c")
@@ -235,7 +191,10 @@ class _NetMonitor(_Monitor):
         return network.read()
 
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        return [_fmt_net(data)]
+        return [(
+            f"Net {data.get('interface', '???')[:5]}",
+            f"R:{_bps_str(data.get('rx_bps', 0))} T:{_bps_str(data.get('tx_bps', 0))}",
+        )]
 
 
 class _GpioMonitor(_Monitor):
@@ -245,7 +204,17 @@ class _GpioMonitor(_Monitor):
         return gpio_pins.read()
 
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        return _fmt_gpio(data)
+        pins  = data.get("gpio_pins", [])
+        chars = [_GPIO_CHARS.get(s, " ") for s in pins]
+        chars += [" "] * (40 - len(chars))
+
+        def _row(indices: range, first_pin: int, last_pin: int) -> str:
+            return f"{first_pin:02d}[{''.join(chars[i] for i in indices)}]{last_pin:02d}"
+
+        return [
+            (_row(range( 0, 20, 2),  1, 19), _row(range( 1, 20, 2),  2, 20)),
+            (_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40)),
+        ]
 
 
 def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
@@ -354,117 +323,6 @@ def _filter_alert_screens(
 
 
 # ---------------------------------------------------------------------------
-# Button controller
-# ---------------------------------------------------------------------------
-
-class _ButtonController:
-    """
-    Button press sequences:
-      1. Short press (LCD on)         — start 5-second window; if no follow-up,
-                                        turn off LCD backlight (monitoring continues)
-      2. Short press (LCD off)        — turn LCD back on
-      3. Short + short press (< 5 s)  — 20-second reboot countdown
-      4. Short + long press  (< 5 s)  — 20-second shutdown countdown
-
-    During a countdown, a short press cancels it.
-    Data collection always continues regardless of LCD state.
-    """
-
-    _WINDOW_S    = 5.0
-    _COUNTDOWN_S = 20
-
-    def __init__(self, button: Button, lcd: LCD, on_long_idle=None):
-        self._lcd    = lcd
-        self._lcd_on = True
-        # idle | after_first | after_second_start | counting
-        self._state  = "idle"
-        self._window_timer: threading.Timer | None = None
-        self._cancel = threading.Event()
-        self._on_long_idle = on_long_idle
-
-        button.on_press_start(self._on_press_down)
-        button.on_short_press(self._on_short)
-        button.on_long_press(self._on_long)
-
-    @property
-    def monitoring(self) -> bool:
-        return True  # data collection never stops; only the LCD turns off
-
-    def _on_press_down(self) -> None:
-        # Cancel the window as soon as a second press begins so the full
-        # long-press duration (2 s) doesn't eat into the follow-up window.
-        if self._state == "after_first":
-            self._cancel_window()
-            self._state = "after_second_start"
-
-    def _on_short(self) -> None:
-        if self._state == "idle":
-            if not self._lcd_on:
-                self._lcd_on = True
-                self._lcd.resume()
-            else:
-                self._state = "after_first"
-                self._window_timer = threading.Timer(self._WINDOW_S, self._window_expired)
-                self._window_timer.start()
-        elif self._state == "after_second_start":
-            self._begin_countdown("reboot")
-        elif self._state == "counting":
-            self._cancel.set()
-
-    def _on_long(self) -> None:
-        if self._state == "after_second_start":
-            self._begin_countdown("shutdown")
-        elif self._state == "idle" and self._on_long_idle:
-            self._on_long_idle()
-
-    def set_lcd_on(self, state: bool) -> None:
-        """Sync LCD on/off from external code (e.g. only_alert logic) without disturbing FSM state."""
-        if state == self._lcd_on:
-            return
-        self._lcd_on = state
-        if state:
-            self._lcd.resume()
-        else:
-            self._lcd.pause()
-
-    def _window_expired(self) -> None:
-        self._lcd_on = False
-        self._lcd.pause()
-        self._state = "idle"
-
-    def _cancel_window(self) -> None:
-        if self._window_timer is not None:
-            self._window_timer.cancel()
-            self._window_timer = None
-
-    def _begin_countdown(self, action: str) -> None:
-        self._state = "counting"
-        if not self._lcd_on:
-            self._lcd_on = True
-            self._lcd.resume()
-        self._cancel.clear()
-        line1 = "Rebooting..." if action == "reboot" else "Shutdown"
-        self._lcd.enter_menu(line1, f"{self._COUNTDOWN_S}s  Press:cancel")
-        threading.Thread(
-            target=self._countdown_loop, args=(action, line1), daemon=True
-        ).start()
-
-    def _countdown_loop(self, action: str, line1: str) -> None:
-        for remaining in range(self._COUNTDOWN_S - 1, -1, -1):
-            if self._cancel.wait(timeout=1.0):
-                self._lcd.update_menu("Cancelled", "")
-                time.sleep(1.5)
-                self._lcd.exit_menu()
-                self._state = "idle"
-                return
-            self._lcd.update_menu(line1, f"{remaining}s  Press:cancel")
-        if action == "reboot":
-            subprocess.run(["sudo", "reboot"], check=False)
-        else:
-            subprocess.run(["sudo", "shutdown", "-h", "now"], check=False)
-
-
-# ---------------------------------------------------------------------------
 # Notifier — owns display + buzzer decisions
 # ---------------------------------------------------------------------------
 
@@ -478,12 +336,12 @@ class _Notifier:
     def __init__(
         self,
         lcd: LCD,
-        beep_async,
-        controller: _ButtonController,
+        buzzer: Buzzer,
+        controller: ButtonController,
         only_alert: bool,
     ):
         self._lcd          = lcd
-        self._beep_async   = beep_async
+        self._buzzer       = buzzer
         self._controller   = controller
         self._only_alert   = only_alert
         self._alert_lcd_on = False
@@ -515,7 +373,7 @@ class _Notifier:
         if flag in breached:
             pattern = patterns.get(flag)
             if pattern:
-                self._beep_async(**pattern)
+                self._buzzer.beep_async(**pattern)
 
     def start(
         self,
@@ -543,7 +401,7 @@ class _Notifier:
         for flag in sorted(breached):
             pattern = patterns.get(flag)
             if pattern:
-                self._beep_async(**pattern)
+                self._buzzer.beep_async(**pattern)
 
     def update(
         self,
@@ -564,7 +422,7 @@ class _Notifier:
         for flag in sorted(new_breached - self._breached):
             pattern = patterns.get(flag)
             if pattern:
-                self._beep_async(**pattern)
+                self._buzzer.beep_async(**pattern)
 
         with self._lock:
             self._breached      = new_breached
@@ -611,20 +469,6 @@ def run(args: argparse.Namespace) -> None:
     button = Button(pin=args.button_pin, long_press_ms=2000)
     buzzer = Buzzer(pin=args.buzzer_pin)
 
-    _beep_q: queue.Queue = queue.Queue()
-
-    def _beep_worker() -> None:
-        while True:
-            item = _beep_q.get()
-            if item is None:
-                break
-            buzzer.beep(**item)
-
-    threading.Thread(target=_beep_worker, daemon=True).start()
-
-    def _beep_async(**kwargs) -> None:
-        _beep_q.put(kwargs)
-
     effective_every: dict = {m.flag: m.every for m in monitors}
 
     def _toggle_only_alert() -> None:
@@ -641,12 +485,12 @@ def run(args: argparse.Namespace) -> None:
         time.sleep(1.5)
         subprocess.run(["systemctl", "restart", "porcupine"], check=False)
 
-    controller = _ButtonController(button, lcd, on_long_idle=_toggle_only_alert)
-    button.on_press_start(lambda: _beep_async(count=1, duration_ms=150, gap_ms=0))
-    button.on_held(lambda: _beep_async(count=1, duration_ms=400, gap_ms=0))
+    controller = ButtonController(button, lcd, on_long_idle=_toggle_only_alert)
+    button.on_press_start(lambda: buzzer.beep_async(count=1, duration_ms=150, gap_ms=0))
+    button.on_held(lambda: buzzer.beep_async(count=1, duration_ms=400, gap_ms=0))
 
     notifier = _Notifier(
-        lcd, _beep_async, controller,
+        lcd, buzzer, controller,
         only_alert=getattr(args, "only_alert", False),
     )
     lcd.on_screen_advance(notifier.on_screen_advance)
@@ -657,7 +501,7 @@ def run(args: argparse.Namespace) -> None:
     notifier.start(monitors, last_data, initial_breached, refresh_s=args.refresh)
 
     button.start()
-    _beep_async(count=1, duration_ms=150, gap_ms=0)
+    buzzer.beep_async(count=1, duration_ms=150, gap_ms=0)
 
     r_cycle = 0
     d_cycle = 0
@@ -685,7 +529,6 @@ def run(args: argparse.Namespace) -> None:
         pass
     finally:
         buzzer.beep(count=1, duration_ms=150)
-        _beep_q.put(None)
         button.stop()
         lcd.stop()
         buzzer.cleanup()

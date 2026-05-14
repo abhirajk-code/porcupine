@@ -1,5 +1,6 @@
 """Buzzer alert driver with named beep patterns and threshold-based AlertChecker."""
 import math
+import queue
 import threading
 import time
 
@@ -66,6 +67,21 @@ class Buzzer:
             self._h = None
             self._stub = _StubPin()
 
+        self._queue: queue.Queue = queue.Queue()
+        self._worker = threading.Thread(target=self._beep_worker, daemon=True)
+        self._worker.start()
+
+    def _beep_worker(self) -> None:
+        while True:
+            item = self._queue.get()
+            if item is None:
+                return
+            self.beep(**item)
+
+    def beep_async(self, count: int = 1, duration_ms: int = 200, gap_ms: int = 0) -> None:
+        """Enqueue a beep to play on the background worker without blocking the caller."""
+        self._queue.put({"count": count, "duration_ms": duration_ms, "gap_ms": gap_ms})
+
     def beep(self, count: int = 1, duration_ms: int = 200, gap_ms: int = 100) -> None:
         with self._lock:
             for i in range(count):
@@ -75,6 +91,8 @@ class Buzzer:
 
 
     def cleanup(self) -> None:
+        self._queue.put(None)   # signal worker to exit
+        self._worker.join(timeout=2)
         if _HAS_LGPIO:
             self._lgpio_stop()
             _lgpio.gpiochip_close(self._h)

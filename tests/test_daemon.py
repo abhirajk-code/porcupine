@@ -56,163 +56,163 @@ def test_bps_str(bps, expected):
 
 
 # ---------------------------------------------------------------------------
-# _fmt_boot
+# Monitor.format_screens — boot
 # ---------------------------------------------------------------------------
 
-def test_fmt_boot_formats_uptime():
-    data = {"boot_count": 5, "uptime_s": 7320.0}   # 2h 2m
-    line1, line2 = daemon._fmt_boot(data)
+def test_boot_monitor_formats_uptime():
+    m = daemon._BootMonitor()
+    line1, line2 = m.format_screens({"boot_count": 5, "uptime_s": 7320.0})[0]
     assert line1 == "Boot"
     assert "#5" in line2
     assert "2h02m" in line2
 
 
-def test_fmt_boot_missing_keys():
-    line1, line2 = daemon._fmt_boot({})
+def test_boot_monitor_missing_keys():
+    m = daemon._BootMonitor()
+    line1, line2 = m.format_screens({})[0]
     assert line1 == "Boot"
     assert "#0" in line2
 
 
 # ---------------------------------------------------------------------------
-# _fmt_power (INA219)
+# Monitor.format_screens — power
 # ---------------------------------------------------------------------------
 
-def test_fmt_power_battery():
-    data = {"power_source": "Battery", "battery_pct": 75.0, "bat_warn": 40.0}
-    line1, line2 = daemon._fmt_power(data)
+def test_power_monitor_formats_battery():
+    m = daemon._PowerMonitor(bat_warn=40.0)
+    line1, line2 = m.format_screens({"power_source": "Battery", "battery_pct": 75.0})[0]
     assert line1 == "Power"
     assert "Battery" in line2
     assert "75%" in line2
     assert "WARN" not in line2
 
 
-def test_fmt_power_battery_warn():
-    data = {"power_source": "Battery", "battery_pct": 25.0, "bat_warn": 40.0}
-    _, line2 = daemon._fmt_power(data)
+def test_power_monitor_formats_battery_warn():
+    m = daemon._PowerMonitor(bat_warn=40.0)
+    _, line2 = m.format_screens({"power_source": "Battery", "battery_pct": 25.0})[0]
     assert "25%" in line2
     assert "WARN" in line2
 
 
-def test_fmt_power_plugged_in_no_warn():
-    data = {"power_source": "Plugged In", "battery_pct": 20.0, "bat_warn": 40.0}
-    line1, line2 = daemon._fmt_power(data)
+def test_power_monitor_plugged_in_no_warn():
+    m = daemon._PowerMonitor(bat_warn=40.0)
+    line1, line2 = m.format_screens({"power_source": "Plugged In", "battery_pct": 20.0})[0]
     assert line1 == "Power"
     assert "Plugged In" in line2
     assert "WARN" not in line2
 
 
-def test_fmt_power_unknown_no_pct():
-    data = {"power_source": "Unknown", "battery_pct": float("nan")}
-    line1, line2 = daemon._fmt_power(data)
+def test_power_monitor_unknown_no_pct():
+    m = daemon._PowerMonitor()
+    line1, line2 = m.format_screens({"power_source": "Unknown", "battery_pct": float("nan")})[0]
     assert line1 == "Power"
     assert line2 == "Unknown"
 
 
 # ---------------------------------------------------------------------------
-# _fmt_cpu
+# Monitor.format_screens — cpu/mem
 # ---------------------------------------------------------------------------
 
-def test_fmt_cpu_formats_percentages():
-    data = {"cpu_avg_pct": 23.7, "mem_pct": 45.1, "cpu_warn": 90.0, "mem_warn": 90.0}
-    line1, line2 = daemon._fmt_cpu(data)
+def test_cpu_monitor_formats_percentages():
+    m = daemon._CpuMemMonitor(cpu_warn=90.0, mem_warn=90.0)
+    line1, line2 = m.format_screens({"cpu_avg_pct": 23.7, "mem_pct": 45.1})[0]
     assert line1 == " CPU   Mem"
     assert "24%" in line2
     assert "45%" in line2
 
 
-def test_fmt_cpu_warn_cpu():
-    data = {"cpu_avg_pct": 95.0, "mem_pct": 45.0, "cpu_warn": 90.0, "mem_warn": 90.0}
-    _, line2 = daemon._fmt_cpu(data)
+def test_cpu_monitor_warn_cpu():
+    m = daemon._CpuMemMonitor(cpu_warn=90.0, mem_warn=90.0)
+    _, line2 = m.format_screens({"cpu_avg_pct": 95.0, "mem_pct": 45.0})[0]
     assert "WARN" in line2
     assert "45%" in line2
 
 
-def test_fmt_cpu_warn_mem():
-    data = {"cpu_avg_pct": 20.0, "mem_pct": 92.0, "cpu_warn": 90.0, "mem_warn": 90.0}
-    _, line2 = daemon._fmt_cpu(data)
+def test_cpu_monitor_warn_mem():
+    m = daemon._CpuMemMonitor(cpu_warn=90.0, mem_warn=90.0)
+    _, line2 = m.format_screens({"cpu_avg_pct": 20.0, "mem_pct": 92.0})[0]
     assert "20%" in line2
     assert line2.endswith("WARN")
 
 
-def test_fmt_cpu_alignment_stable_across_widths():
-    # The % sign for both values must always land in the same column
-    # Use thresholds above 100 so WARN is never triggered
-    base = {"cpu_warn": 101.0, "mem_warn": 101.0}
-    _, line2_low  = daemon._fmt_cpu({**base, "cpu_avg_pct": 1.0,   "mem_pct": 1.0})
-    _, line2_high = daemon._fmt_cpu({**base, "cpu_avg_pct": 100.0, "mem_pct": 100.0})
-    assert line2_low.index("%")  == line2_high.index("%")   # CPU % column stable
-    assert line2_low.rindex("%") == line2_high.rindex("%")  # Mem % column stable
+def test_cpu_monitor_alignment_stable_across_widths():
+    m = daemon._CpuMemMonitor(cpu_warn=101.0, mem_warn=101.0)
+    _, line2_low  = m.format_screens({"cpu_avg_pct": 1.0,   "mem_pct": 1.0})[0]
+    _, line2_high = m.format_screens({"cpu_avg_pct": 100.0, "mem_pct": 100.0})[0]
+    assert line2_low.index("%")  == line2_high.index("%")
+    assert line2_low.rindex("%") == line2_high.rindex("%")
 
 
 # ---------------------------------------------------------------------------
-# _fmt_temp
+# Monitor.format_screens — temperature
 # ---------------------------------------------------------------------------
 
-def test_fmt_temp_ok():
-    data = {"cpu_temp_c": 52.3, "temp_warn": 80.0}
-    _, line2 = daemon._fmt_temp(data)
+def test_temp_monitor_formats_ok():
+    m = daemon._TempMonitor(temp_warn=80.0)
+    _, line2 = m.format_screens({"cpu_temp_c": 52.3})[0]
     assert "52.3C" in line2
     assert "WARN" not in line2
 
 
-def test_fmt_temp_warn():
-    data = {"cpu_temp_c": 85.0, "temp_warn": 80.0}
-    _, line2 = daemon._fmt_temp(data)
+def test_temp_monitor_formats_warn():
+    m = daemon._TempMonitor(temp_warn=80.0)
+    _, line2 = m.format_screens({"cpu_temp_c": 85.0})[0]
     assert "85.0C" in line2
     assert "WARN" in line2
 
 
-def test_fmt_temp_unavailable():
-    data = {"cpu_temp_c": float("nan")}
-    _, line2 = daemon._fmt_temp(data)
+def test_temp_monitor_formats_unavailable():
+    m = daemon._TempMonitor()
+    _, line2 = m.format_screens({"cpu_temp_c": float("nan")})[0]
     assert "---" in line2
 
 
-def test_fmt_temp_missing_keys():
-    _, line2 = daemon._fmt_temp({})
+def test_temp_monitor_formats_missing_key():
+    m = daemon._TempMonitor()
+    _, line2 = m.format_screens({})[0]
     assert "---" in line2
 
 
 # ---------------------------------------------------------------------------
-# _fmt_net
+# Monitor.format_screens — network
 # ---------------------------------------------------------------------------
 
-def test_fmt_net_formats_rates():
-    data = {"interface": "eth0", "rx_bps": 2048.0, "tx_bps": 512.0}
-    line1, line2 = daemon._fmt_net(data)
+def test_net_monitor_formats_rates():
+    m = daemon._NetMonitor()
+    line1, line2 = m.format_screens({"interface": "eth0", "rx_bps": 2048.0, "tx_bps": 512.0})[0]
     assert "eth0" in line1
     assert "2.0K" in line2
     assert "512B" in line2
 
 
-def test_fmt_net_truncates_long_interface_name():
-    data = {"interface": "docker0", "rx_bps": 0, "tx_bps": 0}
-    line1, _ = daemon._fmt_net(data)
-    assert "docke" in line1   # truncated to 5 chars
+def test_net_monitor_truncates_long_interface_name():
+    m = daemon._NetMonitor()
+    line1, _ = m.format_screens({"interface": "docker0", "rx_bps": 0, "tx_bps": 0})[0]
+    assert "docke" in line1
 
 
 # ---------------------------------------------------------------------------
-# _fmt_gpio
+# Monitor.format_screens — gpio
 # ---------------------------------------------------------------------------
 
-def test_fmt_gpio_returns_two_pages():
+def test_gpio_monitor_returns_two_pages():
     data = {"gpio_pins": [None] * 40}
-    pages = daemon._fmt_gpio(data)
+    pages = daemon._GpioMonitor().format_screens(data)
     assert len(pages) == 2
 
 
-def test_fmt_gpio_page_labels_and_width():
+def test_gpio_monitor_page_labels_and_width():
     data = {"gpio_pins": [None] * 40}
-    (r1_p1, r2_p1), (r1_p2, r2_p2) = daemon._fmt_gpio(data)
+    (r1_p1, r2_p1), (r1_p2, r2_p2) = daemon._GpioMonitor().format_screens(data)
     assert r1_p1.startswith("01[") and r1_p1.endswith("]19") and len(r1_p1) == 16
     assert r2_p1.startswith("02[") and r2_p1.endswith("]20") and len(r2_p1) == 16
     assert r1_p2.startswith("21[") and r1_p2.endswith("]39") and len(r1_p2) == 16
     assert r2_p2.startswith("22[") and r2_p2.endswith("]40") and len(r2_p2) == 16
 
 
-def test_fmt_gpio_pin_count_per_row():
+def test_gpio_monitor_pin_count_per_row():
     data = {"gpio_pins": [None] * 40}
-    (r1, _), _ = daemon._fmt_gpio(data)
+    (r1, _), _ = daemon._GpioMonitor().format_screens(data)
     # strip the 3-char brackets on each side to get just the 10 status chars
     assert len(r1[3:-3]) == 10
 
@@ -477,14 +477,13 @@ def test_d_cycle_fallback_when_no_monitors_due():
 
 def _make_notifier():
     lcd        = MagicMock()
+    buzzer     = MagicMock()
     beep_calls = []
+    buzzer.beep_async.side_effect = lambda **kwargs: beep_calls.append(kwargs)
     controller = MagicMock()
     controller._lcd_on = True
 
-    def _beep_async(**kwargs):
-        beep_calls.append(kwargs)
-
-    notifier = daemon._Notifier(lcd, _beep_async, controller, only_alert=False)
+    notifier = daemon._Notifier(lcd, buzzer, controller, only_alert=False)
     return notifier, lcd, controller, beep_calls
 
 
