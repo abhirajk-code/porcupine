@@ -294,16 +294,18 @@ def _with_alert_indicator(
 
 
 def _build_screens_tagged(
-    monitors: list[_Monitor], data: dict, d_cycle: int = 0
+    monitors: list[_Monitor], data: dict, d_cycle: int = 0,
+    breached: "set[str] | None" = None,
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """Like _build_screens but also returns a parallel list of monitor flag names.
 
     d_cycle=0 always includes all enabled monitors (used at startup and in tests).
+    Breached monitors are always included regardless of their d_cycle cadence.
     """
     screens: list[tuple[str, str]] = []
     tags: list[str] = []
     for m in monitors:
-        if d_cycle % m.every != 0:
+        if d_cycle % m.every != 0 and m.flag not in (breached or set()):
             continue
         result = m.format_screens(data)
         screens.extend(result)
@@ -417,7 +419,7 @@ class _Notifier:
         wrapped: bool = False,
     ) -> None:
         """Refresh screens and beep any monitors that newly crossed their threshold."""
-        screens, tags = _build_screens_tagged(monitors, data, d_cycle=d_cycle)
+        screens, tags = _build_screens_tagged(monitors, data, d_cycle=d_cycle, breached=new_breached)
         patterns = {m.flag: m.beep_pattern() for m in monitors if m.flag in new_breached}
         if self._only_alert and new_breached:
             display_screens, display_tags = _filter_alert_screens(screens, tags, new_breached)

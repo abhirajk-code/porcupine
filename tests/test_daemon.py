@@ -473,6 +473,17 @@ def test_d_cycle_fallback_when_no_monitors_due():
     assert screens == [("No monitors", "enabled")]
 
 
+def test_breached_monitor_appears_every_cycle():
+    """A breached monitor is included in the screen list even when its d_cycle is not due."""
+    args = _args(boot_every=0, power_every=0, cpu_every=10, temp_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    data = {"cpu_avg_pct": 95.0, "mem_pct": 50.0}
+    # d_cycle=1: cpu_every=10, 1%10≠0 → normally excluded
+    screens, tags = daemon._build_screens_tagged(monitors, data, d_cycle=1, breached={"cpu"})
+    assert "cpu" in tags, "breached cpu monitor must appear even when not due by d_cycle"
+
+
 # ---------------------------------------------------------------------------
 # _Notifier — beep behaviour
 # ---------------------------------------------------------------------------
