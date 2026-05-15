@@ -4,7 +4,7 @@ import configparser
 
 DEFAULT_CONFIG_PATH = "/etc/porcupine/porcupine.conf"
 
-_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net", "gpio")
+_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net", "gpio", "disk")
 
 _MONITOR_DEFAULTS = {
     "boot":  10,
@@ -13,6 +13,7 @@ _MONITOR_DEFAULTS = {
     "temp":   1,
     "net":   10,
     "gpio":   2,
+    "disk":  30,
 }
 
 
@@ -51,9 +52,11 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
         result["only_alert"] = cp.getboolean("display", "only_alert")
 
     # [alerts]
-    for key in ("temp_warn", "cpu_warn", "mem_warn", "bat_warn"):
+    for key in ("temp_warn", "cpu_warn", "mem_warn", "bat_warn", "disk_warn"):
         if cp.has_option("alerts", key):
             result[key] = cp.getfloat("alerts", key)
+    if cp.has_option("alerts", "alert_log"):
+        result["alert_log"] = cp.get("alerts", "alert_log")
 
     return result
 
@@ -136,6 +139,18 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         help="Battery percentage below which to warn (default 40)",
     )
     parser.add_argument(
+        "--disk-warn", type=float,
+        default=file_cfg.get("disk_warn", 85.0),
+        metavar="PCT",
+        help="Disk usage percentage above which to warn (default 85)",
+    )
+    parser.add_argument(
+        "--alert-log",
+        default=file_cfg.get("alert_log", "/var/log/porcupine/alerts.log"),
+        metavar="PATH",
+        help="Path to append breach/clear events (default: /var/log/porcupine/alerts.log)",
+    )
+    parser.add_argument(
         "--only-alert", action="store_true",
         default=file_cfg.get("only_alert", False),
         help="LCD stays off until a threshold is breached; shows only the breached monitor(s)",
@@ -168,7 +183,7 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
             errors.append(f"{label} 0x{addr:02x} is not a valid 7-bit I2C address (0x08–0x77)")
 
     # Percentage thresholds must be 0–100.
-    for pct_attr in ("cpu_warn", "mem_warn", "bat_warn"):
+    for pct_attr in ("cpu_warn", "mem_warn", "bat_warn", "disk_warn"):
         val = getattr(args, pct_attr)
         if not (0.0 <= val <= 100.0):
             errors.append(f"--{pct_attr.replace('_', '-')} {val} must be between 0 and 100")

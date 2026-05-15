@@ -14,10 +14,12 @@ from porcupine.interfaces.lcd import LCD
 
 def _args(**overrides) -> argparse.Namespace:
     defaults = dict(
-        boot_every=1, power_every=1, cpu_every=1, temp_every=1, net_every=1, gpio_every=1,
+        boot_every=1, power_every=1, cpu_every=1, temp_every=1, net_every=1,
+        gpio_every=1, disk_every=0,
         lcd_addr=0x27, button_pin=4, buzzer_pin=18, ina219_addr=0x41,
         refresh=3.0,
-        temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0,
+        temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0, disk_warn=85.0,
+        alert_log=None,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -30,6 +32,14 @@ def _monitors(args: argparse.Namespace) -> list:
 
 def _stub_lcd() -> LCD:
     return LCD(cols=16, rows=2)
+
+
+def _stub_buzzer():
+    return MagicMock()
+
+
+def _stub_controller():
+    return MagicMock()
 
 
 # ---------------------------------------------------------------------------
@@ -279,12 +289,14 @@ def test_make_monitors_every_set_from_args():
 
 
 def test_make_monitors_thresholds_set_from_args():
-    args = _args(temp_warn=70.0, cpu_warn=85.0, mem_warn=95.0, bat_warn=20.0)
+    args = _args(temp_warn=70.0, cpu_warn=85.0, mem_warn=95.0, bat_warn=20.0,
+                 disk_warn=75.0, disk_every=1)
     monitors = daemon._make_monitors(args)
     by_flag = {m.flag: m for m in monitors}
-    assert by_flag["temp"]._temp_warn == 70.0
-    assert by_flag["cpu"]._cpu_warn   == 85.0
-    assert by_flag["power"]._bat_warn == 20.0
+    assert by_flag["temp"]._temp_warn  == 70.0
+    assert by_flag["cpu"]._cpu_warn    == 85.0
+    assert by_flag["power"]._bat_warn  == 20.0
+    assert by_flag["disk"]._disk_warn  == 75.0
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +365,96 @@ def test_power_monitor_has_breach():
     assert m.has_breach({"power_source": "Battery", "battery_pct": 30.0}) is True
     assert m.has_breach({"power_source": "Battery", "battery_pct": 50.0}) is False
     assert m.has_breach({"power_source": "Plugged In", "battery_pct": 10.0}) is False
+
+
+def test_disk_monitor_formats_ok():
+    m = daemon._DiskMonitor(disk_warn=85.0)
+    _, line2 = m.format_screens({"disk_pct": 42.0, "disk_used_gb": 13.4, "disk_total_gb": 32.0})[0]
+    assert "42%" in line2
+    assert "13.4/32.0GB" in line2
+    assert "WARN" not in line2
+
+
+def test_disk_monitor_formats_warn():
+    m = daemon._DiskMonitor(disk_warn=85.0)
+    _, line2 = m.format_screens({"disk_pct": 90.0, "disk_used_gb": 28.8, "disk_total_gb": 32.0})[0]
+    assert "WARN" in line2
+    assert "28.8/32.0GB" in line2
+
+
+def test_disk_monitor_formats_large_disk():
+    m = daemon._DiskMonitor(disk_warn=85.0)
+    _, line2 = m.format_screens({"disk_pct": 42.0, "disk_used_gb": 430.0, "disk_total_gb": 1024.0})[0]
+    assert "42%" in line2
+    assert "430/1024GB" in line2
+
+
+def test_disk_monitor_formats_unavailable():
+    m = daemon._DiskMonitor()
+    _, line2 = m.format_screens({"disk_pct": float("nan")})[0]
+    assert "---" in line2
+
+
+def test_disk_monitor_has_breach():
+    m = daemon._DiskMonitor(disk_warn=85.0)
+    assert m.has_breach({"disk_pct": 90.0}) is True
+    assert m.has_breach({"disk_pct": 84.9}) is False
+    assert m.has_breach({"disk_pct": float("nan")}) is False
+    assert m.has_breach({}) is False
+
+
+def test_disk_monitor_fits_16_chars():
+    m = daemon._DiskMonitor(disk_warn=85.0)
+    cases = [
+        {"disk_pct": 42.0,  "disk_used_gb": 13.4,  "disk_total_gb": 32.0},
+        {"disk_pct": 90.0,  "disk_used_gb": 28.8,  "disk_total_gb": 32.0},
+        {"disk_pct": 42.0,  "disk_used_gb": 430.0, "disk_total_gb": 1024.0},
+        {"disk_pct": 100.0, "disk_used_gb": 999.9, "disk_total_gb": 1000.0},
+    ]
+    for data in cases:
+        _, line2 = m.format_screens(data)[0]
+        assert len(line2) <= 16, f"{line2!r} is {len(line2)} chars"
+
+
+def test_alert_log_written_on_breach(tmp_path):
+    log_path = str(tmp_path / "alerts.log")
+    args = _args(temp_every=1, disk_every=0, alert_log=log_path)
+    monitors = _monitors(args)
+    notifier = daemon._Notifier(
+        _stub_lcd(), _stub_buzzer(), _stub_controller(),
+        only_alert=False, alert_log=log_path,
+    )
+    notifier.start(monitors, {"cpu_temp_c": 85.0}, {"temp"}, refresh_s=3.0)
+    log = (tmp_path / "alerts.log").read_text()
+    assert "BREACH" in log
+    assert "temp" in log
+
+
+def test_alert_log_written_on_clear(tmp_path):
+    log_path = str(tmp_path / "alerts.log")
+    args = _args(temp_every=1, disk_every=0, alert_log=log_path)
+    monitors = _monitors(args)
+    notifier = daemon._Notifier(
+        _stub_lcd(), _stub_buzzer(), _stub_controller(),
+        only_alert=False, alert_log=log_path,
+    )
+    # Breach then clear
+    notifier.start(monitors, {"cpu_temp_c": 85.0}, {"temp"}, refresh_s=3.0)
+    notifier.update(monitors, {"cpu_temp_c": 50.0}, set(), d_cycle=0)
+    log = (tmp_path / "alerts.log").read_text()
+    assert "BREACH" in log
+    assert "CLEAR" in log
+
+
+def test_alert_log_none_does_not_raise():
+    args = _args(temp_every=1, disk_every=0, alert_log=None)
+    monitors = _monitors(args)
+    notifier = daemon._Notifier(
+        _stub_lcd(), _stub_buzzer(), _stub_controller(),
+        only_alert=False, alert_log=None,
+    )
+    # Should not raise even with no log path
+    notifier.start(monitors, {"cpu_temp_c": 85.0}, {"temp"}, refresh_s=3.0)
 
 
 def test_non_alertable_monitors_have_no_beep():
