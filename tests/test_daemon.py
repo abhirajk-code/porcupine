@@ -616,3 +616,38 @@ def test_gpio_pages_absent_when_not_due():
     data = {"gpio_pins": [None] * 40}
     screens, tags = daemon._build_screens_tagged(monitors, data, d_cycle=1)
     assert "gpio" not in tags
+
+
+def test_update_screens_reset_position_on_wrap():
+    """
+    When the LCD thread fires an extra tick between setting _lcd_wrapped and
+    the main loop consuming it, _index can advance to 1 (GPIO-1) before the
+    main loop replaces the screen list.  Without reset_position the shorter
+    new list clamps _index and GPIO-2 is skipped forever.
+    """
+    lcd = LCD(cols=16, rows=2)
+    lcd._screens = [("Temp", ""), ("GPIO-1", ""), ("GPIO-2", "")]
+    lcd._index = 1  # simulates LCD thread firing one extra tick after the wrap
+
+    lcd.update_screens([("Temp", "")], reset_position=True)
+
+    assert lcd._index == 0
+
+
+def test_notifier_update_passes_reset_position_on_wrap():
+    """_Notifier.update(wrapped=True) must call update_screens(reset_position=True)."""
+    lcd = MagicMock()
+    buzzer = MagicMock()
+    controller = MagicMock()
+    controller._lcd_on = True
+    notifier = daemon._Notifier(lcd, buzzer, controller, only_alert=False)
+
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=2)
+    monitors = _monitors(args)
+    data = {"boot_count": 1, "uptime_s": 60.0}
+
+    notifier.update(monitors, data, set(), d_cycle=1, wrapped=True)
+
+    _, kwargs = lcd.update_screens.call_args
+    assert kwargs.get("reset_position") is True
