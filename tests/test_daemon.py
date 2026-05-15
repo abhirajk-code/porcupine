@@ -299,6 +299,38 @@ def test_temp_monitor_has_breach():
     assert m.has_breach({}) is False
 
 
+def test_temp_monitor_has_breach_throttled():
+    m = daemon._TempMonitor(temp_warn=80.0)
+    # Throttled alone triggers breach even when temp is fine
+    assert m.has_breach({"cpu_temp_c": 52.0, "throttled": True}) is True
+    # Not throttled — no breach below threshold
+    assert m.has_breach({"cpu_temp_c": 52.0, "throttled": False}) is False
+    # throttled=None (vcgencmd unavailable) does not trigger breach
+    assert m.has_breach({"cpu_temp_c": 52.0, "throttled": None}) is False
+
+
+def test_temp_monitor_formats_throttled_only():
+    m = daemon._TempMonitor(temp_warn=80.0)
+    _, line2 = m.format_screens({"cpu_temp_c": 52.3, "throttled": True})[0]
+    assert "52.3C" in line2
+    assert "THRT" in line2
+    assert "WARN" not in line2
+
+
+def test_temp_monitor_formats_warn_and_throttled():
+    m = daemon._TempMonitor(temp_warn=80.0)
+    _, line2 = m.format_screens({"cpu_temp_c": 85.0, "throttled": True})[0]
+    assert "WARN" in line2
+    assert "THRT" in line2
+
+
+def test_temp_monitor_formats_unavailable_throttled():
+    m = daemon._TempMonitor()
+    _, line2 = m.format_screens({"cpu_temp_c": float("nan"), "throttled": True})[0]
+    assert "---" in line2
+    assert "THRT" in line2
+
+
 def test_cpu_mem_monitor_has_breach_cpu():
     m = daemon._CpuMemMonitor(cpu_warn=90.0, mem_warn=90.0)
     assert m.has_breach({"cpu_avg_pct": 91.0, "mem_pct": 50.0}) is True

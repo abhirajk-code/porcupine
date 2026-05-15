@@ -167,18 +167,28 @@ class _TempMonitor(_Monitor):
         return temperature.read()
 
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        temp = data.get("cpu_temp_c", float("nan"))
+        temp      = data.get("cpu_temp_c", float("nan"))
+        throttled = data.get("throttled")
         if not math.isnan(temp):
             temp_str = f"{temp:.0f}C" if temp >= 100 else f"{temp:.1f}C"
-            suffix   = " WARN" if temp >= self._temp_warn else ""
+            parts    = []
+            if temp >= self._temp_warn:
+                parts.append("WARN")
+            if throttled:
+                parts.append("THRT")
+            suffix = (" " + "+".join(parts)) if parts else ""
         else:
             temp_str = "---"
-            suffix   = ""
+            suffix   = " THRT" if throttled else ""
         return [("Temperature", f"{temp_str}{suffix}")]
 
     def has_breach(self, data: dict) -> bool:
-        temp = data.get("cpu_temp_c")
-        return _is_valid(temp) and temp >= self._temp_warn
+        temp      = data.get("cpu_temp_c")
+        throttled = data.get("throttled")
+        return (
+            (_is_valid(temp) and temp >= self._temp_warn)
+            or throttled is True
+        )
 
     def beep_pattern(self) -> dict:
         return {"count": 3, "duration_ms": 200, "gap_ms": 100}
