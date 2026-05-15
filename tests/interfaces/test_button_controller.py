@@ -1,8 +1,6 @@
 """Unit tests for ButtonController (interfaces/button_controller.py)."""
-import threading
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from porcupine.interfaces.button_controller import ButtonController
 

@@ -1,5 +1,5 @@
 import math
-from unittest.mock import mock_open, patch
+from unittest.mock import patch
 
 import porcupine.monitors.temperature as temp_mod
 

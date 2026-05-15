@@ -1,6 +1,6 @@
 """Unit tests for porcupine.monitors.power (INA219 monitor)."""
 import math
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 

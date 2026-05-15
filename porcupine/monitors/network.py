@@ -1,4 +1,5 @@
 """Network rx/tx rate and totals for the best active interface."""
+import logging
 import time
 
 import psutil
@@ -22,8 +23,14 @@ def _best_interface() -> str:
 def read() -> dict:
     global _prev_counters, _prev_time
 
-    iface = _best_interface()
-    all_counters = psutil.net_io_counters(pernic=True)
+    try:
+        iface = _best_interface()
+        all_counters = psutil.net_io_counters(pernic=True)
+    except Exception:
+        logging.warning("network monitor read failed", exc_info=True)
+        return {"interface": "?", "rx_bps": 0.0, "tx_bps": 0.0,
+                "rx_total_mb": 0.0, "tx_total_mb": 0.0}
+
     now = time.monotonic()
     current = all_counters.get(iface)
 

@@ -147,4 +147,39 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         help=f"Path to config file (default: {DEFAULT_CONFIG_PATH})",
     )
 
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    _validate(parser, args)
+    return args
+
+
+def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    errors = []
+
+    # GPIO pins 0–27 are valid BCM pins on all Pi models.
+    for pin_attr in ("button_pin", "buzzer_pin"):
+        pin = getattr(args, pin_attr)
+        if not (0 <= pin <= 27):
+            errors.append(f"--{pin_attr.replace('_', '-')} {pin} is out of range (0–27)")
+
+    # I2C addresses are 7-bit (0x08–0x77; 0x00–0x07 are reserved).
+    for addr_attr, label in (("lcd_addr", "--lcd-addr"), ("ina219_addr", "--ina219-addr")):
+        addr = getattr(args, addr_attr)
+        if not (0x08 <= addr <= 0x77):
+            errors.append(f"{label} 0x{addr:02x} is not a valid 7-bit I2C address (0x08–0x77)")
+
+    # Percentage thresholds must be 0–100.
+    for pct_attr in ("cpu_warn", "mem_warn", "bat_warn"):
+        val = getattr(args, pct_attr)
+        if not (0.0 <= val <= 100.0):
+            errors.append(f"--{pct_attr.replace('_', '-')} {val} must be between 0 and 100")
+
+    # Temperature threshold sanity check.
+    if not (0.0 <= args.temp_warn <= 120.0):
+        errors.append(f"--temp-warn {args.temp_warn} must be between 0 and 120 °C")
+
+    # Refresh interval must be positive.
+    if args.refresh <= 0:
+        errors.append(f"--refresh {args.refresh} must be a positive number")
+
+    if errors:
+        parser.error("\n  ".join(errors))

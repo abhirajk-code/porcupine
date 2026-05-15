@@ -1,7 +1,5 @@
 """Daemon wiring tests — no hardware required."""
 import argparse
-import math
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -553,7 +551,7 @@ def test_run_starts_and_stops_cleanly(tmp_path):
          patch("porcupine.daemon.boot.read", return_value=boot_data), \
          patch("porcupine.daemon.time.sleep", side_effect=fake_sleep), \
          patch("porcupine.daemon.Button") as MockButton, \
-         patch("porcupine.daemon.Buzzer") as MockBuzzer:
+         patch("porcupine.daemon.Buzzer"):
 
         MockButton.return_value.start = MagicMock()
         MockButton.return_value.stop = MagicMock()

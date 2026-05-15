@@ -1,5 +1,4 @@
 """Buzzer and AlertChecker tests — no GPIO hardware required."""
-import time
 from unittest.mock import patch
 
 import pytest
