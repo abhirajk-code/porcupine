@@ -128,7 +128,7 @@ Alerts only fire for monitors that are enabled. Disabling a monitor also silence
 
 ## LCD alert indicator
 
-When any threshold is currently exceeded, `!` is placed at column 16 (the last character) of the first line on every screen — a persistent visual indicator that something needs attention regardless of which screen is currently showing.
+When any threshold is currently exceeded, `!` is placed at column 15 (the last character, 0-indexed) of the first line on every screen — a persistent visual indicator that something needs attention regardless of which screen is currently showing.
 
 ```
  CPU   Mem      !    ← alert active on any monitor
