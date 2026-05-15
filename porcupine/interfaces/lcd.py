@@ -134,11 +134,16 @@ class LCD:
         with self._lock:
             self._screen_cb = cb
 
-    def update_screens(self, screens: list[tuple[str, str]]) -> None:
+    def update_screens(
+        self, screens: list[tuple[str, str]], *, reset_position: bool = False
+    ) -> None:
         """Replace the screen list (called when monitors toggled)."""
         with self._lock:
             self._screens = screens
-            self._index = min(self._index, max(0, len(screens) - 1))
+            if reset_position:
+                self._index = 0
+            else:
+                self._index = min(self._index, max(0, len(screens) - 1))
 
     def load_custom_chars(self, chars: list[list[int]]) -> None:
         """Load up to 8 custom characters into CGRAM (slots 0–7)."""

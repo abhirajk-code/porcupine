@@ -413,6 +413,8 @@ class _Notifier:
         data: dict,
         new_breached: set[str],
         d_cycle: int,
+        *,
+        wrapped: bool = False,
     ) -> None:
         """Refresh screens and beep any monitors that newly crossed their threshold."""
         screens, tags = _build_screens_tagged(monitors, data, d_cycle=d_cycle)
@@ -435,7 +437,10 @@ class _Notifier:
 
         if self._only_alert:
             if new_breached:
-                self._lcd.update_screens(_with_alert_indicator(display_screens, True))
+                self._lcd.update_screens(
+                    _with_alert_indicator(display_screens, True),
+                    reset_position=wrapped,
+                )
                 if not self._alert_lcd_on:
                     self._controller.set_lcd_on(True)
                     self._alert_lcd_on = True
@@ -444,7 +449,8 @@ class _Notifier:
                 self._alert_lcd_on = False
         else:
             self._lcd.update_screens(
-                _with_alert_indicator(display_screens, bool(new_breached))
+                _with_alert_indicator(display_screens, bool(new_breached)),
+                reset_position=wrapped,
             )
 
 
@@ -527,7 +533,7 @@ def run(args: argparse.Namespace) -> None:
 
             breached = {m.flag for m in monitors if m.has_breach(last_data)}
             _apply_escalation(monitors, breached, effective_every)
-            notifier.update(monitors, last_data, breached, d_cycle)
+            notifier.update(monitors, last_data, breached, d_cycle, wrapped=wrapped)
 
     except KeyboardInterrupt:
         pass
