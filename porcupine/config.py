@@ -4,7 +4,7 @@ import configparser
 
 DEFAULT_CONFIG_PATH = "/etc/porcupine/porcupine.conf"
 
-_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net", "gpio", "disk", "conn")
+_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net", "gpio", "disk", "conn", "wifi")
 
 _MONITOR_DEFAULTS = {
     "boot":  10,
@@ -15,6 +15,7 @@ _MONITOR_DEFAULTS = {
     "gpio":   2,
     "disk":  30,
     "conn":  12,
+    "wifi":  60,
 }
 
 

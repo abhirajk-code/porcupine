@@ -14,7 +14,7 @@ from .interfaces.button import Button
 from .interfaces.button_controller import ButtonController
 from .interfaces.buzzer import Buzzer
 from .interfaces.lcd import LCD
-from .monitors import boot, connectivity, cpu_mem, disk, gpio_pins, network, power, temperature
+from .monitors import boot, connectivity, cpu_mem, disk, gpio_pins, network, power, temperature, wifi
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +263,39 @@ class _DiskMonitor(_Monitor):
         return {"count": 2, "duration_ms": 400, "gap_ms": 200}
 
 
+class _WifiMonitor(_Monitor):
+    flag = "wifi"
+
+    def read(self) -> dict:
+        return wifi.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        connected = data.get("wifi_connected")
+        ip        = data.get("wifi_ip")
+        ssid      = data.get("wifi_ssid") or "---"
+        signal    = data.get("wifi_signal_dbm", float("nan"))
+
+        if connected is True:
+            ip_line = ip or "No IP"
+            sig_str = f" {signal:.0f}dBm" if not math.isnan(signal) else ""
+            ssid_line = f"{ssid[:16 - len(sig_str)]}{sig_str}"
+        elif connected is False:
+            ip_line   = "Disconnected"
+            ssid_line = "---"
+        else:
+            ip_line   = "---"
+            ssid_line = "---"
+
+        return [("WiFi", ip_line), ("WiFi", ssid_line)]
+
+    def has_breach(self, data: dict) -> bool:
+        # Only breach when WiFi hardware is present but not connected
+        return data.get("wifi_connected") is False and data.get("wifi_iface") is not None
+
+    def beep_pattern(self) -> dict:
+        return {"count": 2, "duration_ms": 400, "gap_ms": 200}
+
+
 class _ConnectivityMonitor(_Monitor):
     flag = "conn"
 
@@ -301,6 +334,7 @@ def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
         _GpioMonitor(),
         _DiskMonitor(disk_warn=args.disk_warn),
         _ConnectivityMonitor(host=args.conn_host),
+        _WifiMonitor(),
     ]
     monitors = []
     for m in candidates:

@@ -15,7 +15,7 @@ from porcupine.interfaces.lcd import LCD
 def _args(**overrides) -> argparse.Namespace:
     defaults = dict(
         boot_every=1, power_every=1, cpu_every=1, temp_every=1, net_every=1,
-        gpio_every=1, disk_every=0, conn_every=0,
+        gpio_every=1, disk_every=0, conn_every=0, wifi_every=0,
         lcd_addr=0x27, button_pin=4, buzzer_pin=18, ina219_addr=0x41,
         refresh=3.0,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0, disk_warn=85.0,
@@ -495,6 +495,81 @@ def test_conn_monitor_uses_custom_host():
                                                                     "latency_ms": 1.0}) as mock_read:
         m.read()
     mock_read.assert_called_once_with(host="192.168.1.1")
+
+
+# ---------------------------------------------------------------------------
+# _WifiMonitor
+# ---------------------------------------------------------------------------
+
+def test_wifi_monitor_formats_connected():
+    m = daemon._WifiMonitor()
+    screens = m.format_screens({
+        "wifi_connected": True, "wifi_iface": "wlan0",
+        "wifi_ip": "192.168.1.42", "wifi_ssid": "MyNetwork",
+        "wifi_signal_dbm": -67.0,
+    })
+    assert len(screens) == 2
+    assert screens[0] == ("WiFi", "192.168.1.42")
+    _, ssid_line = screens[1]
+    assert "MyNetwork" in ssid_line
+    assert "-67dBm" in ssid_line
+
+
+def test_wifi_monitor_formats_disconnected():
+    m = daemon._WifiMonitor()
+    screens = m.format_screens({
+        "wifi_connected": False, "wifi_iface": "wlan0",
+        "wifi_ip": None, "wifi_ssid": None, "wifi_signal_dbm": float("nan"),
+    })
+    assert len(screens) == 2
+    assert "Disconnected" in screens[0][1]
+
+
+def test_wifi_monitor_formats_no_hardware():
+    m = daemon._WifiMonitor()
+    screens = m.format_screens({
+        "wifi_connected": False, "wifi_iface": None,
+        "wifi_ip": None, "wifi_ssid": None, "wifi_signal_dbm": float("nan"),
+    })
+    assert len(screens) == 2
+
+
+def test_wifi_monitor_formats_no_signal():
+    m = daemon._WifiMonitor()
+    _, ssid_line = m.format_screens({
+        "wifi_connected": True, "wifi_iface": "wlan0",
+        "wifi_ip": "10.0.0.5", "wifi_ssid": "HomeNet",
+        "wifi_signal_dbm": float("nan"),
+    })[1]
+    assert "HomeNet" in ssid_line
+    assert "dBm" not in ssid_line
+
+
+def test_wifi_monitor_has_breach_when_iface_present():
+    m = daemon._WifiMonitor()
+    assert m.has_breach({"wifi_connected": False, "wifi_iface": "wlan0"}) is True
+    assert m.has_breach({"wifi_connected": True,  "wifi_iface": "wlan0"}) is False
+
+
+def test_wifi_monitor_no_breach_without_hardware():
+    m = daemon._WifiMonitor()
+    assert m.has_breach({"wifi_connected": False, "wifi_iface": None}) is False
+    assert m.has_breach({}) is False
+
+
+def test_wifi_monitor_ssid_line_fits_16_chars():
+    m = daemon._WifiMonitor()
+    cases = [
+        {"wifi_connected": True, "wifi_iface": "wlan0", "wifi_ip": "192.168.1.42",
+         "wifi_ssid": "VeryLongNetworkName", "wifi_signal_dbm": -67.0},
+        {"wifi_connected": True, "wifi_iface": "wlan0", "wifi_ip": "10.0.0.1",
+         "wifi_ssid": "Net", "wifi_signal_dbm": -100.0},
+        {"wifi_connected": True, "wifi_iface": "wlan0", "wifi_ip": "192.168.100.200",
+         "wifi_ssid": "A" * 20, "wifi_signal_dbm": float("nan")},
+    ]
+    for data in cases:
+        for _, line in m.format_screens(data):
+            assert len(line) <= 16, f"{line!r} is {len(line)} chars"
 
 
 def test_non_alertable_monitors_have_no_beep():
