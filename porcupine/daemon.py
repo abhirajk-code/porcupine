@@ -36,9 +36,9 @@ _CGRAM: list[list[int]] = [
 
 # Map gpio_pins state strings → display character
 _GPIO_CHARS: dict[str | None, str] = {
-    "3v3":   "+",
-    "5v":    "*",
-    "gnd":   ".",
+    "3v3":   "^",
+    "5v":    "+",
+    "gnd":   "-",
     "out_h": chr(0),
     "out_l": chr(1),
     "in_h":  chr(2),
