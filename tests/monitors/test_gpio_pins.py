@@ -161,9 +161,9 @@ def test_fmt_gpio_fixed_pin_chars():
     from porcupine.daemon import _GpioMonitor
     data = {"gpio_pins": gpio_pins.read()["gpio_pins"]}
     (r1_p1, r2_p1), = _GpioMonitor(page=1).format_screens(data)
-    assert r1_p1[3] == "3"   # pin 0 → 3v3
-    assert r2_p1[3] == "5"   # pin 1 → 5v
-    assert r2_p1[5] == "g"   # pin 5 → gnd
+    assert r1_p1[3] == "+"   # pin 0 → 3v3
+    assert r2_p1[3] == "*"   # pin 1 → 5v
+    assert r2_p1[5] == "."   # pin 5 → gnd
 
 
 def test_fmt_gpio_gpio_chars(fake_debugfs):
