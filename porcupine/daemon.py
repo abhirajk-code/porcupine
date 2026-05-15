@@ -200,6 +200,9 @@ class _NetMonitor(_Monitor):
 class _GpioMonitor(_Monitor):
     flag = "gpio"
 
+    def __init__(self, page: int) -> None:
+        self._page = page  # 1 = pins 1-20, 2 = pins 21-40
+
     def read(self) -> dict:
         return gpio_pins.read()
 
@@ -211,10 +214,10 @@ class _GpioMonitor(_Monitor):
         def _row(indices: range, first_pin: int, last_pin: int) -> str:
             return f"{first_pin:02d}[{''.join(chars[i] for i in indices)}]{last_pin:02d}"
 
-        return [
-            (_row(range( 0, 20, 2),  1, 19), _row(range( 1, 20, 2),  2, 20)),
-            (_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40)),
-        ]
+        if self._page == 1:
+            return [(_row(range( 0, 20, 2),  1, 19), _row(range( 1, 20, 2),  2, 20))]
+        else:
+            return [(_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40))]
 
 
 def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
@@ -225,7 +228,8 @@ def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
         _CpuMemMonitor(cpu_warn=args.cpu_warn, mem_warn=args.mem_warn),
         _TempMonitor(temp_warn=args.temp_warn),
         _NetMonitor(),
-        _GpioMonitor(),
+        _GpioMonitor(page=1),
+        _GpioMonitor(page=2),
     ]
     monitors = []
     for m in candidates:

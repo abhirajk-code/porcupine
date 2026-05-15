@@ -195,15 +195,16 @@ def test_net_monitor_truncates_long_interface_name():
 # Monitor.format_screens — gpio
 # ---------------------------------------------------------------------------
 
-def test_gpio_monitor_returns_two_pages():
+def test_gpio_monitor_each_page_returns_one_screen():
     data = {"gpio_pins": [None] * 40}
-    pages = daemon._GpioMonitor().format_screens(data)
-    assert len(pages) == 2
+    assert len(daemon._GpioMonitor(page=1).format_screens(data)) == 1
+    assert len(daemon._GpioMonitor(page=2).format_screens(data)) == 1
 
 
 def test_gpio_monitor_page_labels_and_width():
     data = {"gpio_pins": [None] * 40}
-    (r1_p1, r2_p1), (r1_p2, r2_p2) = daemon._GpioMonitor().format_screens(data)
+    (r1_p1, r2_p1), = daemon._GpioMonitor(page=1).format_screens(data)
+    (r1_p2, r2_p2), = daemon._GpioMonitor(page=2).format_screens(data)
     assert r1_p1.startswith("01[") and r1_p1.endswith("]19") and len(r1_p1) == 16
     assert r2_p1.startswith("02[") and r2_p1.endswith("]20") and len(r2_p1) == 16
     assert r1_p2.startswith("21[") and r1_p2.endswith("]39") and len(r1_p2) == 16
@@ -212,7 +213,7 @@ def test_gpio_monitor_page_labels_and_width():
 
 def test_gpio_monitor_pin_count_per_row():
     data = {"gpio_pins": [None] * 40}
-    (r1, _), _ = daemon._GpioMonitor().format_screens(data)
+    (r1, _), = daemon._GpioMonitor(page=1).format_screens(data)
     # strip the 3-char brackets on each side to get just the 10 status chars
     assert len(r1[3:-3]) == 10
 
@@ -326,8 +327,9 @@ def test_power_monitor_has_breach():
 
 
 def test_non_alertable_monitors_have_no_beep():
-    for cls in (daemon._BootMonitor, daemon._NetMonitor, daemon._GpioMonitor):
-        m = cls()
+    non_alertable = [daemon._BootMonitor(), daemon._NetMonitor(),
+                     daemon._GpioMonitor(page=1), daemon._GpioMonitor(page=2)]
+    for m in non_alertable:
         assert m.beep_pattern() is None
         assert m.has_breach({}) is False
 
@@ -564,3 +566,53 @@ def test_run_starts_and_stops_cleanly(tmp_path):
         daemon.run(args)
 
     assert iteration["count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Regression: GPIO page 2 skipped when every=2
+# ---------------------------------------------------------------------------
+
+def test_gpio_two_instances_each_one_screen():
+    """Each _GpioMonitor page returns exactly one screen — no multi-screen monitor."""
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=1)
+    monitors = _monitors(args)
+    gpio_monitors = [m for m in monitors if m.flag == "gpio"]
+    assert len(gpio_monitors) == 2, "must have two GPIO monitor instances"
+    data = {"gpio_pins": [None] * 40}
+    for m in gpio_monitors:
+        screens = m.format_screens(data)
+        assert len(screens) == 1, "each GPIO page must produce exactly one screen"
+
+
+def test_gpio_pages_cover_distinct_pin_ranges():
+    """Page 1 mentions pin 01/20; page 2 mentions pin 21/40."""
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=1)
+    monitors = _monitors(args)
+    gpio_monitors = [m for m in monitors if m.flag == "gpio"]
+    data = {"gpio_pins": [None] * 40}
+    texts = ["".join(gpio_monitors[i].format_screens(data)[0]) for i in range(2)]
+    assert "01" in texts[0] and "20" in texts[0]
+    assert "21" in texts[1] and "40" in texts[1]
+
+
+def test_gpio_both_pages_appear_in_screen_list_when_due():
+    """With gpio_every=2 at d_cycle=0 (even), both GPIO pages are in the screen list."""
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=2)
+    monitors = _monitors(args)
+    data = {"gpio_pins": [None] * 40}
+    screens, tags = daemon._build_screens_tagged(monitors, data, d_cycle=0)
+    gpio_screens = [s for s, t in zip(screens, tags) if t == "gpio"]
+    assert len(gpio_screens) == 2, "both GPIO pages must appear when gpio_every cycle is due"
+
+
+def test_gpio_pages_absent_when_not_due():
+    """With gpio_every=2 at d_cycle=1 (odd), no GPIO screens appear."""
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=2)
+    monitors = _monitors(args)
+    data = {"gpio_pins": [None] * 40}
+    screens, tags = daemon._build_screens_tagged(monitors, data, d_cycle=1)
+    assert "gpio" not in tags
