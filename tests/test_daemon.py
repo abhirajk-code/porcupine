@@ -15,11 +15,11 @@ from porcupine.interfaces.lcd import LCD
 def _args(**overrides) -> argparse.Namespace:
     defaults = dict(
         boot_every=1, power_every=1, cpu_every=1, temp_every=1, net_every=1,
-        gpio_every=1, disk_every=0,
+        gpio_every=1, disk_every=0, conn_every=0,
         lcd_addr=0x27, button_pin=4, buzzer_pin=18, ina219_addr=0x41,
         refresh=3.0,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0, disk_warn=85.0,
-        alert_log=None,
+        conn_host="8.8.8.8", alert_log=None,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -455,6 +455,46 @@ def test_alert_log_none_does_not_raise():
     )
     # Should not raise even with no log path
     notifier.start(monitors, {"cpu_temp_c": 85.0}, {"temp"}, refresh_s=3.0)
+
+
+# ---------------------------------------------------------------------------
+# _ConnectivityMonitor
+# ---------------------------------------------------------------------------
+
+def test_conn_monitor_formats_reachable():
+    m = daemon._ConnectivityMonitor()
+    _, line2 = m.format_screens({"reachable": True, "latency_ms": 12.3})[0]
+    assert "OK" in line2
+    assert "12.3ms" in line2
+
+
+def test_conn_monitor_formats_unreachable():
+    m = daemon._ConnectivityMonitor()
+    _, line2 = m.format_screens({"reachable": False, "latency_ms": float("nan")})[0]
+    assert "UNREACHABLE" in line2
+
+
+def test_conn_monitor_formats_unknown():
+    m = daemon._ConnectivityMonitor()
+    _, line2 = m.format_screens({})[0]
+    assert "---" in line2
+
+
+def test_conn_monitor_has_breach():
+    m = daemon._ConnectivityMonitor()
+    assert m.has_breach({"reachable": False}) is True
+    assert m.has_breach({"reachable": True})  is False
+    assert m.has_breach({})                   is False
+
+
+def test_conn_monitor_uses_custom_host():
+    from unittest.mock import patch
+    m = daemon._ConnectivityMonitor(host="192.168.1.1")
+    with patch("porcupine.daemon.connectivity.read", return_value={"reachable": True,
+                                                                    "conn_host": "192.168.1.1",
+                                                                    "latency_ms": 1.0}) as mock_read:
+        m.read()
+    mock_read.assert_called_once_with(host="192.168.1.1")
 
 
 def test_non_alertable_monitors_have_no_beep():

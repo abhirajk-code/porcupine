@@ -4,7 +4,7 @@ import configparser
 
 DEFAULT_CONFIG_PATH = "/etc/porcupine/porcupine.conf"
 
-_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net", "gpio", "disk")
+_MONITOR_FLAGS = ("boot", "power", "cpu", "temp", "net", "gpio", "disk", "conn")
 
 _MONITOR_DEFAULTS = {
     "boot":  10,
@@ -14,6 +14,7 @@ _MONITOR_DEFAULTS = {
     "net":   10,
     "gpio":   2,
     "disk":  30,
+    "conn":  12,
 }
 
 
@@ -44,6 +45,10 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
             result[key] = cp.getint("hardware", key)
     if cp.has_option("hardware", "ina219_addr"):
         result["ina219_addr"] = int(cp.get("hardware", "ina219_addr"), 0)
+
+    # [network]
+    if cp.has_option("network", "conn_host"):
+        result["conn_host"] = cp.get("network", "conn_host")
 
     # [display]
     if cp.has_option("display", "refresh"):
@@ -143,6 +148,12 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         default=file_cfg.get("disk_warn", 85.0),
         metavar="PCT",
         help="Disk usage percentage above which to warn (default 85)",
+    )
+    parser.add_argument(
+        "--conn-host",
+        default=file_cfg.get("conn_host", "8.8.8.8"),
+        metavar="HOST",
+        help="Host to probe for internet connectivity (default: 8.8.8.8)",
     )
     parser.add_argument(
         "--alert-log",

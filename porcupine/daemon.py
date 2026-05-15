@@ -14,7 +14,7 @@ from .interfaces.button import Button
 from .interfaces.button_controller import ButtonController
 from .interfaces.buzzer import Buzzer
 from .interfaces.lcd import LCD
-from .monitors import boot, cpu_mem, disk, gpio_pins, network, power, temperature
+from .monitors import boot, connectivity, cpu_mem, disk, gpio_pins, network, power, temperature
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +263,33 @@ class _DiskMonitor(_Monitor):
         return {"count": 2, "duration_ms": 400, "gap_ms": 200}
 
 
+class _ConnectivityMonitor(_Monitor):
+    flag = "conn"
+
+    def __init__(self, host: str = "8.8.8.8"):
+        self._host = host
+
+    def read(self) -> dict:
+        return connectivity.read(host=self._host)
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        reachable  = data.get("reachable")
+        latency_ms = data.get("latency_ms", float("nan"))
+        if reachable is True:
+            line2 = f"OK {latency_ms:.1f}ms"
+        elif reachable is False:
+            line2 = "UNREACHABLE"
+        else:
+            line2 = "---"
+        return [("Internet", line2)]
+
+    def has_breach(self, data: dict) -> bool:
+        return data.get("reachable") is False
+
+    def beep_pattern(self) -> dict:
+        return {"count": 3, "duration_ms": 300, "gap_ms": 150}
+
+
 def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
     """Create and return enabled Monitor instances, in display order."""
     candidates: list[_Monitor] = [
@@ -273,6 +300,7 @@ def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
         _NetMonitor(),
         _GpioMonitor(),
         _DiskMonitor(disk_warn=args.disk_warn),
+        _ConnectivityMonitor(host=args.conn_host),
     ]
     monitors = []
     for m in candidates:
