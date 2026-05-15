@@ -177,9 +177,9 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     if not (0.0 <= args.temp_warn <= 120.0):
         errors.append(f"--temp-warn {args.temp_warn} must be between 0 and 120 °C")
 
-    # Refresh interval must be positive.
-    if args.refresh <= 0:
-        errors.append(f"--refresh {args.refresh} must be a positive number")
+    # Refresh interval must be sensible.
+    if not (3.0 <= args.refresh <= 300.0):
+        errors.append(f"--refresh {args.refresh} must be between 3 and 300 seconds")
 
     if errors:
         parser.error("\n  ".join(errors))
