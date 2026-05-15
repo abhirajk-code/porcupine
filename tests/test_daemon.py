@@ -505,23 +505,21 @@ def test_wifi_monitor_formats_connected():
     m = daemon._WifiMonitor()
     screens = m.format_screens({
         "wifi_connected": True, "wifi_iface": "wlan0",
-        "wifi_ip": "192.168.1.42", "wifi_ssid": "MyNetwork",
-        "wifi_signal_dbm": -67.0,
+        "wifi_ip": "192.168.1.42", "wifi_signal_dbm": -67.0,
     })
-    assert len(screens) == 2
-    assert screens[0] == ("WiFi", "192.168.1.42")
-    _, ssid_line = screens[1]
-    assert "MyNetwork" in ssid_line
-    assert "-67dBm" in ssid_line
+    assert len(screens) == 1
+    header, line2 = screens[0]
+    assert "-67dBm" in header
+    assert line2 == "192.168.1.42"
 
 
 def test_wifi_monitor_formats_disconnected():
     m = daemon._WifiMonitor()
     screens = m.format_screens({
         "wifi_connected": False, "wifi_iface": "wlan0",
-        "wifi_ip": None, "wifi_ssid": None, "wifi_signal_dbm": float("nan"),
+        "wifi_ip": None, "wifi_signal_dbm": float("nan"),
     })
-    assert len(screens) == 2
+    assert len(screens) == 1
     assert "Disconnected" in screens[0][1]
 
 
@@ -529,20 +527,20 @@ def test_wifi_monitor_formats_no_hardware():
     m = daemon._WifiMonitor()
     screens = m.format_screens({
         "wifi_connected": False, "wifi_iface": None,
-        "wifi_ip": None, "wifi_ssid": None, "wifi_signal_dbm": float("nan"),
+        "wifi_ip": None, "wifi_signal_dbm": float("nan"),
     })
-    assert len(screens) == 2
+    assert len(screens) == 1
 
 
 def test_wifi_monitor_formats_no_signal():
     m = daemon._WifiMonitor()
-    _, ssid_line = m.format_screens({
+    header, line2 = m.format_screens({
         "wifi_connected": True, "wifi_iface": "wlan0",
-        "wifi_ip": "10.0.0.5", "wifi_ssid": "HomeNet",
-        "wifi_signal_dbm": float("nan"),
-    })[1]
-    assert "HomeNet" in ssid_line
-    assert "dBm" not in ssid_line
+        "wifi_ip": "10.0.0.5", "wifi_signal_dbm": float("nan"),
+    })[0]
+    assert header == "WiFi"
+    assert "dBm" not in header
+    assert line2 == "10.0.0.5"
 
 
 def test_wifi_monitor_has_breach_when_iface_present():
@@ -557,19 +555,18 @@ def test_wifi_monitor_no_breach_without_hardware():
     assert m.has_breach({}) is False
 
 
-def test_wifi_monitor_ssid_line_fits_16_chars():
+def test_wifi_monitor_header_fits_16_chars():
     m = daemon._WifiMonitor()
     cases = [
-        {"wifi_connected": True, "wifi_iface": "wlan0", "wifi_ip": "192.168.1.42",
-         "wifi_ssid": "VeryLongNetworkName", "wifi_signal_dbm": -67.0},
-        {"wifi_connected": True, "wifi_iface": "wlan0", "wifi_ip": "10.0.0.1",
-         "wifi_ssid": "Net", "wifi_signal_dbm": -100.0},
-        {"wifi_connected": True, "wifi_iface": "wlan0", "wifi_ip": "192.168.100.200",
-         "wifi_ssid": "A" * 20, "wifi_signal_dbm": float("nan")},
+        {"wifi_connected": True,  "wifi_iface": "wlan0", "wifi_ip": "192.168.1.42",   "wifi_signal_dbm": -67.0},
+        {"wifi_connected": True,  "wifi_iface": "wlan0", "wifi_ip": "10.0.0.1",        "wifi_signal_dbm": -100.0},
+        {"wifi_connected": True,  "wifi_iface": "wlan0", "wifi_ip": "192.168.100.200", "wifi_signal_dbm": float("nan")},
+        {"wifi_connected": False, "wifi_iface": "wlan0", "wifi_ip": None,              "wifi_signal_dbm": float("nan")},
     ]
     for data in cases:
-        for _, line in m.format_screens(data):
-            assert len(line) <= 16, f"{line!r} is {len(line)} chars"
+        header, line2 = m.format_screens(data)[0]
+        assert len(header) <= 16, f"header {header!r} is {len(header)} chars"
+        assert len(line2)  <= 16, f"line2 {line2!r} is {len(line2)} chars"
 
 
 def test_non_alertable_monitors_have_no_beep():

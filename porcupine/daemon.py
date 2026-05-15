@@ -272,21 +272,19 @@ class _WifiMonitor(_Monitor):
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
         connected = data.get("wifi_connected")
         ip        = data.get("wifi_ip")
-        ssid      = data.get("wifi_ssid") or "---"
         signal    = data.get("wifi_signal_dbm", float("nan"))
 
-        if connected is True:
-            ip_line = ip or "No IP"
-            sig_str = f" {signal:.0f}dBm" if not math.isnan(signal) else ""
-            ssid_line = f"{ssid[:16 - len(sig_str)]}{sig_str}"
-        elif connected is False:
-            ip_line   = "Disconnected"
-            ssid_line = "---"
-        else:
-            ip_line   = "---"
-            ssid_line = "---"
+        sig_str = f" {signal:.0f}dBm" if not math.isnan(signal) else ""
+        header  = f"WiFi{sig_str}"
 
-        return [("WiFi", ip_line), ("WiFi", ssid_line)]
+        if connected is True:
+            line2 = ip or "No IP"
+        elif connected is False:
+            line2 = "Disconnected"
+        else:
+            line2 = "---"
+
+        return [(header, line2)]
 
     def has_breach(self, data: dict) -> bool:
         # Only breach when WiFi hardware is present but not connected
