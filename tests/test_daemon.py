@@ -809,6 +809,7 @@ def test_run_starts_and_stops_cleanly(tmp_path):
          patch("porcupine.daemon.power.init"), \
          patch("porcupine.daemon.boot.read", return_value=boot_data), \
          patch("porcupine.daemon.time.sleep", side_effect=fake_sleep), \
+         patch("porcupine.daemon._wifi_startup"), \
          patch("porcupine.daemon.Button") as MockButton, \
          patch("porcupine.daemon.Buzzer"):
 
@@ -906,3 +907,68 @@ def test_notifier_update_passes_reset_position_on_wrap():
 
     _, kwargs = lcd.update_screens.call_args
     assert kwargs.get("reset_position") is True
+
+
+# ---------------------------------------------------------------------------
+# _wifi_startup
+# ---------------------------------------------------------------------------
+
+def test_wifi_startup_shows_screen_and_exits_when_connected():
+    lcd = MagicMock()
+    connected_data = {
+        "wifi_connected": True, "wifi_iface": "wlan0",
+        "wifi_ip": "192.168.1.42", "wifi_ssid": None, "wifi_signal_dbm": -67.0,
+    }
+    # monotonic: t_start=0, then loop now=25 (> t_min=20) → exit immediately
+    with patch("porcupine.daemon.wifi.read", return_value=connected_data), \
+         patch("porcupine.daemon.time.monotonic", side_effect=[0.0, 25.0]):
+        daemon._wifi_startup(lcd)
+
+    assert lcd.show.call_count == 1
+    header, line2 = lcd.show.call_args[0]
+    assert "192.168.1.42" in line2
+
+
+def test_wifi_startup_polls_until_connected():
+    lcd = MagicMock()
+    disconnected = {
+        "wifi_connected": False, "wifi_iface": "wlan0",
+        "wifi_ip": None, "wifi_ssid": None, "wifi_signal_dbm": float("nan"),
+    }
+    connected = {**disconnected, "wifi_connected": True, "wifi_ip": "10.0.0.5"}
+    # monotonic: start=0, iter1 now=10 (not yet t_min=20), iter2 now=25 (≥t_min, connected)
+    with patch("porcupine.daemon.wifi.read", side_effect=[disconnected, connected]), \
+         patch("porcupine.daemon.time.monotonic", side_effect=[0.0, 10.0, 25.0]), \
+         patch("porcupine.daemon.time.sleep"):
+        daemon._wifi_startup(lcd)
+
+    assert lcd.show.call_count == 2  # shown twice: once disconnected, once connected
+
+
+def test_wifi_startup_exits_after_max_wait_if_never_connected():
+    lcd = MagicMock()
+    disconnected = {
+        "wifi_connected": False, "wifi_iface": "wlan0",
+        "wifi_ip": None, "wifi_ssid": None, "wifi_signal_dbm": float("nan"),
+    }
+    # monotonic: start=0, iter1 now=30 (<t_max=60), iter2 now=65 (≥t_max) → exit
+    with patch("porcupine.daemon.wifi.read", return_value=disconnected), \
+         patch("porcupine.daemon.time.monotonic", side_effect=[0.0, 30.0, 65.0]), \
+         patch("porcupine.daemon.time.sleep"):
+        daemon._wifi_startup(lcd)
+
+    assert lcd.show.call_count == 2
+
+
+def test_wifi_startup_no_hw_waits_only_20s():
+    lcd = MagicMock()
+    no_hw = {
+        "wifi_connected": False, "wifi_iface": None,
+        "wifi_ip": None, "wifi_ssid": None, "wifi_signal_dbm": float("nan"),
+    }
+    # t_max = 0 + 20 (no hw); iter1 now=25 ≥ t_max=20 → exit after one show
+    with patch("porcupine.daemon.wifi.read", return_value=no_hw), \
+         patch("porcupine.daemon.time.monotonic", side_effect=[0.0, 25.0]):
+        daemon._wifi_startup(lcd)
+
+    assert lcd.show.call_count == 1

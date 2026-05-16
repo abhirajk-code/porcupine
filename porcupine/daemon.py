@@ -582,6 +582,39 @@ class _Notifier:
 
 
 # ---------------------------------------------------------------------------
+# Startup WiFi splash
+# ---------------------------------------------------------------------------
+
+def _wifi_startup(lcd: LCD) -> None:
+    """Show the WiFi screen before the main loop starts.
+
+    Displays for at least 20 s so the user can read the IP address.
+    If WiFi hardware is present but not yet connected, keeps polling
+    and updating the display for up to 60 s total, then proceeds
+    regardless so regular monitoring can start.
+    """
+    m = _WifiMonitor()
+    data = wifi.read()
+    has_hw = data.get("wifi_iface") is not None
+
+    t_start  = time.monotonic()
+    t_min    = t_start + 20
+    t_max    = t_start + (60 if has_hw else 20)
+
+    while True:
+        header, line2 = m.format_screens(data)[0]
+        lcd.show(header, line2)
+
+        now = time.monotonic()
+        if now >= t_max:
+            break
+        if data.get("wifi_connected") and now >= t_min:
+            break
+        time.sleep(2)
+        data = wifi.read()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -605,6 +638,8 @@ def run(args: argparse.Namespace) -> None:
     lcd.load_custom_chars(_CGRAM)
     button = Button(pin=args.button_pin, long_press_ms=2000)
     buzzer = Buzzer(pin=args.buzzer_pin)
+
+    _wifi_startup(lcd)
 
     effective_every: dict = {m.flag: m.every for m in monitors}
 
