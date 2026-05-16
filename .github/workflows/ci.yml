@@ -18,7 +18,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pytest ruff
+          pip install pytest ruff psutil
           pip install -e . --no-deps
 
       - name: Lint
