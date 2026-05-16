@@ -75,8 +75,8 @@ Single button, three interaction modes:
 | Interaction | Action |
 |---|---|
 | Short press | Toggle monitoring on/off (backlight + cycling) |
-| Short + short (within 3 s) | 20-second reboot countdown |
-| Short + long (within 3 s) | 20-second shutdown countdown |
+| Short + short (within 5 s) | 20-second reboot countdown |
+| Short + long (within 5 s) | 20-second shutdown countdown |
 | Any press during countdown | Cancel |
 
 ### Buzzer

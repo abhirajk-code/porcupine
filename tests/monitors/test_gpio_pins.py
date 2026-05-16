@@ -151,9 +151,8 @@ def test_sysfs_fallback_when_debugfs_missing(tmp_path, monkeypatch, fake_sysfs):
 def test_fmt_gpio_row_lengths():
     from porcupine.daemon import _GpioMonitor
     data = {"gpio_pins": gpio_pins.read()["gpio_pins"]}
-    pages = _GpioMonitor().format_screens(data)
-    assert len(pages) == 2
-    for r1, r2 in pages:
+    for page in (1, 2):
+        (r1, r2), = _GpioMonitor(page=page).format_screens(data)
         assert len(r1) == 16
         assert len(r2) == 16
 
@@ -161,31 +160,32 @@ def test_fmt_gpio_row_lengths():
 def test_fmt_gpio_fixed_pin_chars():
     from porcupine.daemon import _GpioMonitor
     data = {"gpio_pins": gpio_pins.read()["gpio_pins"]}
-    (r1_p1, r2_p1), _ = _GpioMonitor().format_screens(data)
-    assert r1_p1[3] == "+"   # pin 0 → 3v3
-    assert r2_p1[3] == "^"   # pin 1 → 5v
-    assert r2_p1[5] == "_"   # pin 5 → gnd
+    (r1_p1, r2_p1), = _GpioMonitor(page=1).format_screens(data)
+    assert r1_p1[3] == "^"   # pin 0 → 3v3
+    assert r2_p1[3] == "+"   # pin 1 → 5v
+    assert r2_p1[5] == "-"   # pin 5 → gnd
 
 
 def test_fmt_gpio_gpio_chars(fake_debugfs):
     from porcupine.daemon import _GpioMonitor
     fake_debugfs.write_text(_debugfs_content([(4, "out", 1)]))
     data = {"gpio_pins": gpio_pins.read()["gpio_pins"]}
-    (r1_p1, _), _ = _GpioMonitor().format_screens(data)
+    (r1_p1, _), = _GpioMonitor(page=1).format_screens(data)
     assert r1_p1[6] == chr(0)   # BCM 4, out_h → custom char slot 0
 
 
 def test_fmt_gpio_unconfigured_is_space():
     from porcupine.daemon import _GpioMonitor
     data = {"gpio_pins": [None] * 40}
-    (r1_p1, r2_p1), (r1_p2, r2_p2) = _GpioMonitor().format_screens(data)
+    (r1_p1, r2_p1), = _GpioMonitor(page=1).format_screens(data)
+    (r1_p2, r2_p2), = _GpioMonitor(page=2).format_screens(data)
     for row in (r1_p1, r2_p1, r1_p2, r2_p2):
         assert row[3:13] == " " * 10
 
 
 def test_fmt_gpio_short_list_padded():
     from porcupine.daemon import _GpioMonitor
-    (r1, r2), _ = _GpioMonitor().format_screens({"gpio_pins": []})
+    (r1, r2), = _GpioMonitor(page=1).format_screens({"gpio_pins": []})
     assert len(r1) == 16
     assert len(r2) == 16
     assert r1[3:13] == " " * 10

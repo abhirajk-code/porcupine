@@ -21,26 +21,26 @@ from .monitors import boot, connectivity, cpu_mem, disk, gpio_pins, network, pow
 # Custom LCD characters (CGRAM slots 0-3) for the GPIO pin screen
 #
 # Each bitmap is 8 rows × 5 cols.  Bit 4 is the leftmost pixel.
-#   slot 0: Output High — up-arrow, forked shaft  (pin driving high)
-#   slot 1: Output Low  — down-arrow, forked shaft (pin driving low)
-#   slot 2: Input High  — up-arrow, solid shaft   (pin reading high)
-#   slot 3: Input Low   — down-arrow, solid shaft  (pin reading low)
+#   slot 0: Output High — open diamond head (top), Y-fork shaft (pin driving high)
+#   slot 1: Output Low  — Y-fork shaft, open diamond head (bottom) (pin driving low)
+#   slot 2: Input High  — open diamond head (top), solid shaft    (pin reading high)
+#   slot 3: Input Low   — solid shaft, open diamond head (bottom) (pin reading low)
 #
-# Pixel legend (5-wide):  ..#..=0b00100  .###.=0b01110  #.#.#=0b10101  .#.#.=0b01010
+# Pixel legend (5-wide):  ..#..=0b00100  .#.#.=0b01010  #...#=0b10001  .....=0b00000
 # ---------------------------------------------------------------------------
 
 _CGRAM: list[list[int]] = [
-    [0b00100, 0b01110, 0b10101, 0b01010, 0b01010, 0b00100, 0b00000, 0b00000],  # slot 0: out_h
-    [0b00000, 0b00000, 0b00100, 0b01010, 0b01010, 0b10101, 0b01110, 0b00100],  # slot 1: out_l
-    [0b00100, 0b01110, 0b10101, 0b00100, 0b00100, 0b00100, 0b00000, 0b00000],  # slot 2: in_h
-    [0b00000, 0b00000, 0b00100, 0b00100, 0b00100, 0b10101, 0b01110, 0b00100],  # slot 3: in_l
+    [0b00100, 0b01010, 0b10001, 0b00000, 0b00100, 0b01010, 0b01010, 0b00100],  # slot 0: out_h
+    [0b00100, 0b01010, 0b01010, 0b00100, 0b00000, 0b10001, 0b01010, 0b00100],  # slot 1: out_l
+    [0b00100, 0b01010, 0b10001, 0b00000, 0b00100, 0b00100, 0b00100, 0b00100],  # slot 2: in_h
+    [0b00100, 0b00100, 0b00100, 0b00100, 0b00000, 0b10001, 0b01010, 0b00100],  # slot 3: in_l
 ]
 
 # Map gpio_pins state strings → display character
 _GPIO_CHARS: dict[str | None, str] = {
-    "3v3":   "+",
-    "5v":    "^",
-    "gnd":   "_",
+    "3v3":   "^",
+    "5v":    "+",
+    "gnd":   "-",
     "out_h": chr(0),
     "out_l": chr(1),
     "in_h":  chr(2),
@@ -217,6 +217,9 @@ class _NetMonitor(_Monitor):
 class _GpioMonitor(_Monitor):
     flag = "gpio"
 
+    def __init__(self, page: int) -> None:
+        self._page = page  # 1 = pins 1-20, 2 = pins 21-40
+
     def read(self) -> dict:
         return gpio_pins.read()
 
@@ -228,10 +231,10 @@ class _GpioMonitor(_Monitor):
         def _row(indices: range, first_pin: int, last_pin: int) -> str:
             return f"{first_pin:02d}[{''.join(chars[i] for i in indices)}]{last_pin:02d}"
 
-        return [
-            (_row(range( 0, 20, 2),  1, 19), _row(range( 1, 20, 2),  2, 20)),
-            (_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40)),
-        ]
+        if self._page == 1:
+            return [(_row(range( 0, 20, 2),  1, 19), _row(range( 1, 20, 2),  2, 20))]
+        else:
+            return [(_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40))]
 
 
 class _DiskMonitor(_Monitor):
@@ -329,7 +332,8 @@ def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
         _CpuMemMonitor(cpu_warn=args.cpu_warn, mem_warn=args.mem_warn),
         _TempMonitor(temp_warn=args.temp_warn),
         _NetMonitor(),
-        _GpioMonitor(),
+        _GpioMonitor(page=1),
+        _GpioMonitor(page=2),
         _DiskMonitor(disk_warn=args.disk_warn),
         _ConnectivityMonitor(host=args.conn_host),
         _WifiMonitor(),
@@ -397,16 +401,18 @@ def _with_alert_indicator(
 
 
 def _build_screens_tagged(
-    monitors: list[_Monitor], data: dict, d_cycle: int = 0
+    monitors: list[_Monitor], data: dict, d_cycle: int = 0,
+    breached: "set[str] | None" = None,
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """Like _build_screens but also returns a parallel list of monitor flag names.
 
     d_cycle=0 always includes all enabled monitors (used at startup and in tests).
+    Breached monitors are always included regardless of their d_cycle cadence.
     """
     screens: list[tuple[str, str]] = []
     tags: list[str] = []
     for m in monitors:
-        if d_cycle % m.every != 0:
+        if d_cycle % m.every != 0 and m.flag not in (breached or set()):
             continue
         result = m.format_screens(data)
         screens.extend(result)
@@ -482,7 +488,7 @@ class _Notifier:
 
     def on_screen_advance(self, index: int) -> None:
         """Called by the LCD thread each time a new screen is rendered."""
-        if index == 0:
+        if index == 0 and not self._lcd.frozen:
             self._lcd_wrapped.set()
         with self._lock:
             breached = set(self._breached)
@@ -531,9 +537,11 @@ class _Notifier:
         data: dict,
         new_breached: set[str],
         d_cycle: int,
+        *,
+        wrapped: bool = False,
     ) -> None:
         """Refresh screens and beep any monitors that newly crossed their threshold."""
-        screens, tags = _build_screens_tagged(monitors, data, d_cycle=d_cycle)
+        screens, tags = _build_screens_tagged(monitors, data, d_cycle=d_cycle, breached=new_breached)
         patterns = {m.flag: m.beep_pattern() for m in monitors if m.flag in new_breached}
         if self._only_alert and new_breached:
             display_screens, display_tags = _filter_alert_screens(screens, tags, new_breached)
@@ -556,7 +564,10 @@ class _Notifier:
 
         if self._only_alert:
             if new_breached:
-                self._lcd.update_screens(_with_alert_indicator(display_screens, True))
+                self._lcd.update_screens(
+                    _with_alert_indicator(display_screens, True),
+                    reset_position=wrapped,
+                )
                 if not self._alert_lcd_on:
                     self._controller.set_lcd_on(True)
                     self._alert_lcd_on = True
@@ -565,7 +576,8 @@ class _Notifier:
                 self._alert_lcd_on = False
         else:
             self._lcd.update_screens(
-                _with_alert_indicator(display_screens, bool(new_breached))
+                _with_alert_indicator(display_screens, bool(new_breached)),
+                reset_position=wrapped,
             )
 
 
@@ -649,7 +661,7 @@ def run(args: argparse.Namespace) -> None:
 
             breached = {m.flag for m in monitors if m.has_breach(last_data)}
             _apply_escalation(monitors, breached, effective_every)
-            notifier.update(monitors, last_data, breached, d_cycle)
+            notifier.update(monitors, last_data, breached, d_cycle, wrapped=wrapped)
 
     except KeyboardInterrupt:
         pass

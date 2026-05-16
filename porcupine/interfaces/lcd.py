@@ -30,6 +30,7 @@ class LCD:
         self._refresh_s: float = 3.0
         self._screen_cb: Callable | None = None
         self._display_enabled: bool = True
+        self._frozen: bool = False
 
         if _HAS_RPLCD:
             self._lcd = CharLCD(
@@ -82,6 +83,16 @@ class LCD:
             self._lcd.backlight_enabled = True
             self._render_current()
 
+    def freeze(self) -> None:
+        """Hold the current screen; data still refreshes but cycling stops."""
+        with self._lock:
+            self._frozen = True
+
+    def unfreeze(self) -> None:
+        """Resume screen cycling from the current position."""
+        with self._lock:
+            self._frozen = False
+
     def next_screen(self) -> None:
         """Advance to the next screen (called from button short-press)."""
         with self._lock:
@@ -122,11 +133,16 @@ class LCD:
         with self._lock:
             self._screen_cb = cb
 
-    def update_screens(self, screens: list[tuple[str, str]]) -> None:
+    def update_screens(
+        self, screens: list[tuple[str, str]], *, reset_position: bool = False
+    ) -> None:
         """Replace the screen list (called when monitors toggled)."""
         with self._lock:
             self._screens = screens
-            self._index = min(self._index, max(0, len(screens) - 1))
+            if reset_position:
+                self._index = 0
+            else:
+                self._index = min(self._index, max(0, len(screens) - 1))
 
     def load_custom_chars(self, chars: list[list[int]]) -> None:
         """Load up to 8 custom characters into CGRAM (slots 0–7)."""
@@ -152,17 +168,23 @@ class LCD:
             self._lcd.cursor_pos = (1, 0)
             self._lcd.write_string(line2[: self._cols])
 
+    @property
+    def frozen(self) -> bool:
+        with self._lock:
+            return self._frozen
+
     def _cycle_loop(self, refresh_s: float) -> None:
         while not self._stop_event.wait(timeout=refresh_s):
             screen_cb = None
             idx = 0
             with self._lock:
                 if not self._in_menu:
-                    self._index = (self._index + 1) % max(len(self._screens), 1)
-                    if self._display_enabled:
-                        self._render_current()
+                    if not self._frozen:
+                        self._index = (self._index + 1) % max(len(self._screens), 1)
                     screen_cb = self._screen_cb
                     idx = self._index
+                    if self._display_enabled:
+                        self._render_current()
             if screen_cb is not None:
                 screen_cb(idx)
 

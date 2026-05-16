@@ -203,10 +203,26 @@ EOF
 # ---------------------------------------------------------------------------
 # Run config step
 # ---------------------------------------------------------------------------
-if $NON_INTERACTIVE; then
-    configure_noninteractive
-else
-    configure_interactive
+SKIP_CONFIG=false
+if [[ -f "$CONFIG_FILE" ]]; then
+    if $NON_INTERACTIVE; then
+        info "Existing config found — keeping $CONFIG_FILE"
+        SKIP_CONFIG=true
+    else
+        echo
+        echo "  Existing config found: $CONFIG_FILE"
+        KEEP_EXISTING="true"
+        prompt_bool "Keep existing config? (n = reconfigure from scratch)" "true" KEEP_EXISTING
+        [[ "$KEEP_EXISTING" == "true" ]] && SKIP_CONFIG=true
+    fi
+fi
+
+if ! $SKIP_CONFIG; then
+    if $NON_INTERACTIVE; then
+        configure_noninteractive
+    else
+        configure_interactive
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -214,7 +230,9 @@ fi
 # ---------------------------------------------------------------------------
 mkdir -p "$CONFIG_DIR" "$DATA_DIR"
 ok "Directories: $CONFIG_DIR, $DATA_DIR"
-write_config
+if ! $SKIP_CONFIG; then
+    write_config
+fi
 
 # ---------------------------------------------------------------------------
 # Create virtual environment and install package

@@ -235,12 +235,11 @@ d=10    | Boot !, Power WARN ! ◀         | r=26–29: …, power              
 
 ## Alert beep patterns
 
-| Alert | Condition                             | Pattern               | Screen where beep fires |
-|-------|---------------------------------------|-----------------------|-------------------------|
-| `temp`| cpu_temp_c ≥ temp_warn                | 3 × 200 ms, 100 ms gap| Temp                    |
-| `cpu` | cpu_avg_pct ≥ cpu_warn                | 2 × 200 ms, 100 ms gap| CPU                     |
-| `mem` | mem_pct ≥ mem_warn                    | 2 × 200 ms, 100 ms gap| CPU                     |
-| `bat` | battery_pct < bat_warn AND on battery | 1 × 600 ms            | Power                   |
+| Flag    | Condition                                           | Pattern               | Screen where beep fires |
+|---------|-----------------------------------------------------|-----------------------|-------------------------|
+| `temp`  | cpu_temp_c ≥ temp_warn                              | 3 × 200 ms, 100 ms gap| Temp                    |
+| `cpu`   | cpu_avg_pct ≥ cpu_warn **or** mem_pct ≥ mem_warn    | 2 × 200 ms, 100 ms gap| CPU                     |
+| `power` | battery_pct < bat_warn AND on battery               | 1 × 600 ms            | Power                   |
 
 Beep also fires immediately (regardless of which screen is showing) when a **new** breach
 is first detected, so the user gets instant feedback.
@@ -253,11 +252,11 @@ When a threshold is breached `effective_every[flag]` drops to **1** so that moni
 is sampled every refresh cycle (5 s). Display cadence is unaffected — it always uses
 the base `every` value from config.
 
-| Monitor | Normal read    | Escalated read | Triggered by     |
-|---------|----------------|----------------|------------------|
-| temp    | 5 s (every=1)  | already 5 s    | temp alert       |
-| cpu     | 25 s (every=5) | 5 s            | cpu or mem alert |
-| power   | 25 s (every=5) | 5 s            | bat alert        |
-| boot    | 50 s (every=10)| —              | (no alert)       |
-| net     | 50 s (every=10)| —              | (no alert)       |
-| gpio    | 10 s (every=2) | —              | (no alert)       |
+| Monitor | Normal read    | Escalated read | Triggered by          |
+|---------|----------------|----------------|-----------------------|
+| temp    | 5 s (every=1)  | already 5 s    | `temp` flag breach    |
+| cpu     | 25 s (every=5) | 5 s            | `cpu` flag breach     |
+| power   | 25 s (every=5) | 5 s            | `power` flag breach   |
+| boot    | 50 s (every=10)| —              | (no alert)            |
+| net     | 50 s (every=10)| —              | (no alert)            |
+| gpio    | 10 s (every=2) | —              | (no alert)            |

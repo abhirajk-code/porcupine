@@ -54,15 +54,27 @@ def test_monitoring_always_true():
 
 
 # ---------------------------------------------------------------------------
-# Short press with LCD on — starts 5-second window, doesn't touch LCD yet
+# Short press with LCD on — freezes immediately, starts 5-second window
 # ---------------------------------------------------------------------------
 
-def test_short_press_does_not_immediately_pause_lcd():
+def test_short_press_freezes_screen_immediately():
     ctrl, cbs, lcd = _make_controller()
-    with patch.object(ctrl, "_window_timer") as _:
+    with patch("porcupine.interfaces.button_controller.threading.Timer") as MockTimer:
+        MockTimer.return_value = MagicMock()
         _short(cbs)
+    lcd.freeze.assert_called_once()
     lcd.pause.assert_not_called()
     lcd.resume.assert_not_called()
+    assert ctrl._frozen is True
+
+
+def test_short_press_does_not_freeze_again_when_already_frozen():
+    ctrl, cbs, lcd = _make_controller()
+    ctrl._frozen = True
+    with patch("porcupine.interfaces.button_controller.threading.Timer") as MockTimer:
+        MockTimer.return_value = MagicMock()
+        _short(cbs)
+    lcd.freeze.assert_not_called()
 
 
 def test_short_press_starts_window_timer():
@@ -71,15 +83,34 @@ def test_short_press_starts_window_timer():
         mock_timer = MagicMock()
         MockTimer.return_value = mock_timer
         _short(cbs)
-    MockTimer.assert_called_once_with(5.0, ctrl._window_expired)
+    assert MockTimer.call_count == 1
+    delay, callback = MockTimer.call_args[0]
+    assert delay == 5.0
+    assert callable(callback)
     mock_timer.start.assert_called_once()
 
 
-def test_window_expired_pauses_lcd_and_returns_to_idle():
+def test_window_expired_first_time_keeps_freeze():
+    # was_frozen=False: freeze already set in _on_short — expiry is a no-op
     ctrl, cbs, lcd = _make_controller()
-    ctrl._window_expired()
+    ctrl._frozen = True  # set as _on_short would have done
+    ctrl._window_expired(was_frozen=False)
+    lcd.freeze.assert_not_called()
+    lcd.pause.assert_not_called()
+    assert ctrl._state == "idle"
+    assert ctrl._frozen is True   # stays frozen
+    assert ctrl._lcd_on is True
+
+
+def test_window_expired_second_time_pauses_and_unfreezes():
+    # was_frozen=True: screen was frozen before this window → LCD off + unfreeze
+    ctrl, cbs, lcd = _make_controller()
+    ctrl._frozen = True
+    ctrl._window_expired(was_frozen=True)
+    lcd.unfreeze.assert_called_once()
     lcd.pause.assert_called_once()
     assert ctrl._state == "idle"
+    assert ctrl._frozen is False
     assert ctrl._lcd_on is False
 
 
