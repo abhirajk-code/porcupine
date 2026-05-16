@@ -277,6 +277,42 @@ def cmd_monitor_gpio() -> None:
         print("  (no GPIO pins currently exported via sysfs)")
 
 
+def cmd_monitor_disk() -> None:
+    from porcupine.monitors import disk
+    data = disk.read()
+    print(f"  Disk usage  : {data['disk_pct']:.1f}%")
+    print(f"  Used / Total: {data['disk_used_gb']:.1f} GB / {data['disk_total_gb']:.1f} GB")
+
+
+def cmd_monitor_conn() -> None:
+    from porcupine.monitors import connectivity
+    data = connectivity.read()
+    host = data["conn_host"]
+    if data["reachable"]:
+        print(f"  Host        : {host}")
+        print(f"  Reachable   : yes  ({data['latency_ms']:.1f} ms)")
+    else:
+        print(f"  Host        : {host}")
+        print("  Reachable   : NO")
+
+
+def cmd_monitor_wifi() -> None:
+    import math
+    from porcupine.monitors import wifi
+    data = wifi.read()
+    iface = data["wifi_iface"]
+    if iface is None:
+        print("  No WiFi hardware detected.")
+        return
+    print(f"  Interface   : {iface}")
+    print(f"  Connected   : {'yes' if data['wifi_connected'] else 'no'}")
+    if data["wifi_ip"]:
+        print(f"  IP address  : {data['wifi_ip']}")
+    sig = data["wifi_signal_dbm"]
+    if not math.isnan(sig):
+        print(f"  Signal      : {sig:.0f} dBm")
+
+
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
@@ -292,6 +328,9 @@ _COMMANDS = {
     "monitor-temp":  lambda cfg: cmd_monitor_temp(),
     "monitor-net":   lambda cfg: cmd_monitor_net(),
     "monitor-gpio":  lambda cfg: cmd_monitor_gpio(),
+    "monitor-disk":  lambda cfg: cmd_monitor_disk(),
+    "monitor-conn":  lambda cfg: cmd_monitor_conn(),
+    "monitor-wifi":  lambda cfg: cmd_monitor_wifi(),
 }
 
 if __name__ == "__main__":
