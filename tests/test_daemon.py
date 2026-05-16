@@ -235,24 +235,24 @@ def test_with_alert_indicator_inactive_returns_screens_unchanged():
     assert daemon._with_alert_indicator(screens, False) is screens
 
 
-def test_with_alert_indicator_places_exclamation_at_column_15():
+def test_with_alert_indicator_places_warning_triangle_at_column_15():
     screens = [("Boot", ""), (" CPU   Mem", "")]
     result = daemon._with_alert_indicator(screens, True)
     for line1, _ in result:
         assert len(line1) == 16
-        assert line1[15] == "!"
+        assert line1[15] == chr(5)
 
 
 def test_with_alert_indicator_short_line1_padded():
     screens = [("Hi", "")]
     line1, _ = daemon._with_alert_indicator(screens, True)[0]
-    assert line1 == "Hi             !"
+    assert line1 == f"Hi             {chr(5)}"
 
 
 def test_with_alert_indicator_full_16_char_line1_last_char_replaced():
     screens = [("0123456789ABCDEF", "")]
     line1, _ = daemon._with_alert_indicator(screens, True)[0]
-    assert line1 == "0123456789ABCDE!"
+    assert line1 == f"0123456789ABCDE{chr(5)}"
     assert len(line1) == 16
 
 
