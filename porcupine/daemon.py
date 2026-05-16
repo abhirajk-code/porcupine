@@ -18,13 +18,14 @@ from .monitors import boot, connectivity, cpu_mem, disk, gpio_pins, network, pow
 
 
 # ---------------------------------------------------------------------------
-# Custom LCD characters (CGRAM slots 0-3) for the GPIO pin screen
+# Custom LCD characters (CGRAM slots 0-4) for the GPIO pin screen and lock indicator
 #
 # Each bitmap is 8 rows × 5 cols.  Bit 4 is the leftmost pixel.
 #   slot 0: Output High — open diamond head (top), Y-fork shaft (pin driving high)
 #   slot 1: Output Low  — Y-fork shaft, open diamond head (bottom) (pin driving low)
 #   slot 2: Input High  — open diamond head (top), solid shaft    (pin reading high)
 #   slot 3: Input Low   — solid shaft, open diamond head (bottom) (pin reading low)
+#   slot 4: Lock        — padlock icon shown in row 2 col 15 when screen is frozen
 #
 # Pixel legend (5-wide):  ..#..=0b00100  .#.#.=0b01010  #...#=0b10001  .....=0b00000
 # ---------------------------------------------------------------------------
@@ -34,6 +35,7 @@ _CGRAM: list[list[int]] = [
     [0b00100, 0b01010, 0b01010, 0b00100, 0b00000, 0b10001, 0b01010, 0b00100],  # slot 1: out_l
     [0b00100, 0b01010, 0b10001, 0b00000, 0b00100, 0b00100, 0b00100, 0b00100],  # slot 2: in_h
     [0b00100, 0b00100, 0b00100, 0b00100, 0b00000, 0b10001, 0b01010, 0b00100],  # slot 3: in_l
+    [0b01110, 0b10001, 0b10001, 0b11111, 0b11011, 0b11011, 0b11111, 0b00000],  # slot 4: lock
 ]
 
 # Map gpio_pins state strings → display character

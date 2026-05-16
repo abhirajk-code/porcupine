@@ -166,7 +166,13 @@ class LCD:
         self._lcd.write_string(line1[: self._cols])
         if self._rows >= 2:
             self._lcd.cursor_pos = (1, 0)
-            self._lcd.write_string(line2[: self._cols])
+            if self._frozen:
+                # Reserve col 15 for the padlock indicator (CGRAM slot 4)
+                self._lcd.write_string(line2[: self._cols - 1])
+                self._lcd.cursor_pos = (1, self._cols - 1)
+                self._lcd.write_string(chr(4))
+            else:
+                self._lcd.write_string(line2[: self._cols])
 
     @property
     def frozen(self) -> bool:
@@ -213,7 +219,11 @@ class _StubLCD:
     def write_string(self, text: str) -> None:
         row, col = self.cursor_pos
         if row < self.rows:
-            self._lines[row] = text[: self.cols - col]
+            if col == 0:
+                self._lines[row] = text[: self.cols]
+            else:
+                line = self._lines[row].ljust(col)
+                self._lines[row] = line[:col] + text[: self.cols - col]
 
     def create_char(self, location: int, bitmap: list[int]) -> None:
         pass

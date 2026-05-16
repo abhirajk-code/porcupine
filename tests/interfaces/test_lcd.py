@@ -177,6 +177,44 @@ def test_display_not_updated_while_paused(lcd):
 
 
 # ------------------------------------------------------------------
+# freeze / lock indicator
+# ------------------------------------------------------------------
+
+def test_frozen_shows_lock_char_at_col_15(lcd):
+    lcd.freeze()
+    lcd.show("Header", "Content here---")  # exactly 15 chars
+    _, line2 = _display(lcd)
+    assert len(line2) == 16
+    assert line2[15] == chr(4)       # padlock in CGRAM slot 4
+    assert line2[:15] == "Content here---"
+
+
+def test_frozen_truncates_long_line2_to_fit_lock(lcd):
+    lcd.freeze()
+    lcd.show("Header", "A" * 16)    # 16 chars — must be trimmed to 15
+    _, line2 = _display(lcd)
+    assert len(line2) == 16
+    assert line2[15] == chr(4)
+    assert line2[:15] == "A" * 15
+
+
+def test_unfrozen_no_lock_char(lcd):
+    lcd.show("Header", "B" * 16)
+    _, line2 = _display(lcd)
+    assert line2 == "B" * 16        # full 16 chars, no lock overlay
+    assert line2[15] != chr(4)
+
+
+def test_unfreeze_removes_lock_indicator(lcd):
+    lcd.freeze()
+    lcd.show("Header", "Locked content!")
+    lcd.unfreeze()
+    lcd.show("Header", "Free content!!!!") # 16 chars fills the line
+    _, line2 = _display(lcd)
+    assert line2[15] != chr(4)
+
+
+# ------------------------------------------------------------------
 # _StubLCD
 # ------------------------------------------------------------------
 
@@ -185,3 +223,11 @@ def test_stub_clear_resets_lines():
     stub.write_string("hello")
     stub.clear()
     assert stub.current_display() == ["", ""]
+
+
+def test_stub_midline_write():
+    stub = _StubLCD(16, 2)
+    stub.write_string("Hello          ")   # 15 chars at col 0
+    stub.cursor_pos = (0, 15)
+    stub.write_string("!")
+    assert stub.current_display()[0] == "Hello          !"
