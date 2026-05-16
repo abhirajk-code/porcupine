@@ -588,29 +588,33 @@ class _Notifier:
 def _wifi_startup(lcd: LCD) -> None:
     """Show the WiFi screen before the main loop starts.
 
-    Displays for at least 20 s so the user can read the IP address.
-    If WiFi hardware is present but not yet connected, keeps polling
-    and updating the display for up to 60 s total, then proceeds
-    regardless so regular monitoring can start.
+    If no WiFi hardware is detected, shows the screen once and returns.
+    Otherwise polls every 5 s for up to 60 s waiting for an IP address.
+    Once connected, displays the screen for a further 20 s then proceeds.
     """
     m = _WifiMonitor()
     data = wifi.read()
-    has_hw = data.get("wifi_iface") is not None
 
-    t_start  = time.monotonic()
-    t_min    = t_start + 20
-    t_max    = t_start + (60 if has_hw else 20)
+    if data.get("wifi_iface") is None:
+        header, line2 = m.format_screens(data)[0]
+        lcd.show(header, line2)
+        return
+
+    t_start = time.monotonic()
+    t_max   = t_start + 60
 
     while True:
         header, line2 = m.format_screens(data)[0]
         lcd.show(header, line2)
 
-        now = time.monotonic()
-        if now >= t_max:
+        if data.get("wifi_connected"):
+            time.sleep(20)
             break
-        if data.get("wifi_connected") and now >= t_min:
+
+        if time.monotonic() >= t_max:
             break
-        time.sleep(2)
+
+        time.sleep(5)
         data = wifi.read()
 
 
