@@ -146,6 +146,18 @@ echo "  [GPIO pins]"
 "$PY" "$TEST_PY" monitor-gpio 2>/dev/null || echo "  (unavailable)"
 echo
 
+echo "  [Disk space]"
+"$PY" "$TEST_PY" monitor-disk 2>/dev/null || echo "  (unavailable)"
+echo
+
+echo "  [Internet connectivity]"
+"$PY" "$TEST_PY" monitor-conn 2>/dev/null || echo "  (unavailable)"
+echo
+
+echo "  [WiFi]"
+"$PY" "$TEST_PY" monitor-wifi 2>/dev/null || echo "  (unavailable)"
+echo
+
 if confirm "Do all monitor readings look reasonable?"; then
     ok "Monitor readings"
 else

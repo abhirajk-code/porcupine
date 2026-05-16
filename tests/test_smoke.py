@@ -248,7 +248,8 @@ def test_step1_writes_all_config_keys():
     text = step1.read_text()
     for key in ("lcd_addr", "button_pin", "buzzer_pin", "ina219_addr", "refresh",
                 "temp_warn", "cpu_warn", "mem_warn",
-                "boot_every", "power_every", "cpu_every", "temp_every", "net_every", "gpio_every"):
+                "boot_every", "power_every", "cpu_every", "temp_every", "net_every", "gpio_every",
+                "disk_every", "conn_every", "wifi_every", "disk_warn", "conn_host"):
         assert key in text, f"install.sh must write config key: {key}"
 
 
@@ -257,7 +258,7 @@ def test_test_sh_tests_all_interfaces():
     text = step2.read_text()
     for subcmd in ("lcd", "buzzer", "button-short", "button-long",
                    "monitor-boot", "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net",
-                   "monitor-gpio"):
+                   "monitor-gpio", "monitor-disk", "monitor-conn", "monitor-wifi"):
         assert subcmd in text, f"test.sh must invoke test_hardware.py {subcmd}"
 
 
@@ -273,7 +274,7 @@ def test_test_hardware_py_has_all_commands():
     text = hw.read_text()
     for cmd in ("lcd", "buzzer", "button-short", "button-long",
                 "monitor-boot", "monitor-power", "monitor-cpu", "monitor-temp", "monitor-net",
-                "monitor-gpio"):
+                "monitor-gpio", "monitor-disk", "monitor-conn", "monitor-wifi"):
         assert f'"{cmd}"' in text, f"test_hardware.py must handle command: {cmd}"
 
 
