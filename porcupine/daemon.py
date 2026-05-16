@@ -589,8 +589,9 @@ def _wifi_startup(lcd: LCD) -> None:
     """Show the WiFi screen before the main loop starts.
 
     If no WiFi hardware is detected, shows the screen once and returns.
-    Otherwise polls every 5 s for up to 60 s waiting for an IP address.
-    Once connected, displays the screen for a further 20 s then proceeds.
+    Otherwise polls every 5 s until an IP address is obtained, then
+    displays the connected screen for 20 s before handing off to the
+    regular monitoring cycle.
     """
     m = _WifiMonitor()
     data = wifi.read()
@@ -600,18 +601,12 @@ def _wifi_startup(lcd: LCD) -> None:
         lcd.show(header, line2)
         return
 
-    t_start = time.monotonic()
-    t_max   = t_start + 60
-
     while True:
         header, line2 = m.format_screens(data)[0]
         lcd.show(header, line2)
 
         if data.get("wifi_connected"):
             time.sleep(20)
-            break
-
-        if time.monotonic() >= t_max:
             break
 
         time.sleep(5)
