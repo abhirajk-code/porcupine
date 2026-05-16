@@ -7,12 +7,14 @@ import signal
 import subprocess
 import threading
 import time
+from datetime import datetime
+from pathlib import Path
 
 from .interfaces.button import Button
 from .interfaces.button_controller import ButtonController
 from .interfaces.buzzer import Buzzer
 from .interfaces.lcd import LCD
-from .monitors import boot, cpu_mem, gpio_pins, network, power, temperature
+from .monitors import boot, connectivity, cpu_mem, disk, gpio_pins, network, power, temperature, wifi
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +60,11 @@ def _bps_str(bps: float) -> str:
         kb = bps / _KB
         return f"{kb:.0f}K" if kb >= 100 else f"{kb:.1f}K"
     return f"{int(bps)}B"
+
+
+def _gb_fmt(gb: float) -> str:
+    """Format gigabytes compactly — one decimal below 100 GB, integer above."""
+    return f"{gb:.0f}" if gb >= 100 else f"{gb:.1f}"
 
 
 def _is_valid(value: object) -> bool:
@@ -167,18 +174,28 @@ class _TempMonitor(_Monitor):
         return temperature.read()
 
     def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        temp = data.get("cpu_temp_c", float("nan"))
+        temp      = data.get("cpu_temp_c", float("nan"))
+        throttled = data.get("throttled")
         if not math.isnan(temp):
             temp_str = f"{temp:.0f}C" if temp >= 100 else f"{temp:.1f}C"
-            suffix   = " WARN" if temp >= self._temp_warn else ""
+            parts    = []
+            if temp >= self._temp_warn:
+                parts.append("WARN")
+            if throttled:
+                parts.append("THRT")
+            suffix = (" " + "+".join(parts)) if parts else ""
         else:
             temp_str = "---"
-            suffix   = ""
+            suffix   = " THRT" if throttled else ""
         return [("Temperature", f"{temp_str}{suffix}")]
 
     def has_breach(self, data: dict) -> bool:
-        temp = data.get("cpu_temp_c")
-        return _is_valid(temp) and temp >= self._temp_warn
+        temp      = data.get("cpu_temp_c")
+        throttled = data.get("throttled")
+        return (
+            (_is_valid(temp) and temp >= self._temp_warn)
+            or throttled is True
+        )
 
     def beep_pattern(self) -> dict:
         return {"count": 3, "duration_ms": 200, "gap_ms": 100}
@@ -220,6 +237,93 @@ class _GpioMonitor(_Monitor):
             return [(_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40))]
 
 
+class _DiskMonitor(_Monitor):
+    flag = "disk"
+
+    def __init__(self, disk_warn: float = 85.0):
+        self._disk_warn = disk_warn
+
+    def read(self) -> dict:
+        return disk.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        pct   = data.get("disk_pct",      float("nan"))
+        used  = data.get("disk_used_gb",  float("nan"))
+        total = data.get("disk_total_gb", float("nan"))
+        if not math.isnan(pct):
+            pct_s  = "WARN" if pct >= self._disk_warn else f"{pct:.0f}%"
+            size_s = f"{_gb_fmt(used)}/{_gb_fmt(total)}GB"
+        else:
+            pct_s  = "---"
+            size_s = ""
+        return [("Disk /", f"{pct_s} {size_s}".rstrip())]
+
+    def has_breach(self, data: dict) -> bool:
+        pct = data.get("disk_pct")
+        return _is_valid(pct) and pct >= self._disk_warn
+
+    def beep_pattern(self) -> dict:
+        return {"count": 2, "duration_ms": 400, "gap_ms": 200}
+
+
+class _WifiMonitor(_Monitor):
+    flag = "wifi"
+
+    def read(self) -> dict:
+        return wifi.read()
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        connected = data.get("wifi_connected")
+        ip        = data.get("wifi_ip")
+        signal    = data.get("wifi_signal_dbm", float("nan"))
+
+        sig_str = f" {signal:.0f}dBm" if not math.isnan(signal) else ""
+        header  = f"WiFi{sig_str}"
+
+        if connected is True:
+            line2 = ip or "No IP"
+        elif connected is False:
+            line2 = "Disconnected"
+        else:
+            line2 = "---"
+
+        return [(header, line2)]
+
+    def has_breach(self, data: dict) -> bool:
+        # Only breach when WiFi hardware is present but not connected
+        return data.get("wifi_connected") is False and data.get("wifi_iface") is not None
+
+    def beep_pattern(self) -> dict:
+        return {"count": 2, "duration_ms": 400, "gap_ms": 200}
+
+
+class _ConnectivityMonitor(_Monitor):
+    flag = "conn"
+
+    def __init__(self, host: str = "8.8.8.8"):
+        self._host = host
+
+    def read(self) -> dict:
+        return connectivity.read(host=self._host)
+
+    def format_screens(self, data: dict) -> list[tuple[str, str]]:
+        reachable  = data.get("reachable")
+        latency_ms = data.get("latency_ms", float("nan"))
+        if reachable is True:
+            line2 = f"OK {latency_ms:.1f}ms"
+        elif reachable is False:
+            line2 = "UNREACHABLE"
+        else:
+            line2 = "---"
+        return [("Internet", line2)]
+
+    def has_breach(self, data: dict) -> bool:
+        return data.get("reachable") is False
+
+    def beep_pattern(self) -> dict:
+        return {"count": 3, "duration_ms": 300, "gap_ms": 150}
+
+
 def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
     """Create and return enabled Monitor instances, in display order."""
     candidates: list[_Monitor] = [
@@ -230,6 +334,9 @@ def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
         _NetMonitor(),
         _GpioMonitor(page=1),
         _GpioMonitor(page=2),
+        _DiskMonitor(disk_warn=args.disk_warn),
+        _ConnectivityMonitor(host=args.conn_host),
+        _WifiMonitor(),
     ]
     monitors = []
     for m in candidates:
@@ -345,11 +452,13 @@ class _Notifier:
         buzzer: Buzzer,
         controller: ButtonController,
         only_alert: bool,
+        alert_log: str | None = None,
     ):
         self._lcd          = lcd
         self._buzzer       = buzzer
         self._controller   = controller
         self._only_alert   = only_alert
+        self._alert_log    = alert_log
         self._alert_lcd_on = False
         self._lcd_wrapped  = threading.Event()
         self._lock         = threading.Lock()
@@ -357,6 +466,18 @@ class _Notifier:
         self._breached: set[str]               = set()
         self._tags: list[str]                  = []
         self._beep_patterns: dict[str, dict | None] = {}
+
+    def _log(self, flag: str, event: str) -> None:
+        if not self._alert_log:
+            return
+        try:
+            path = Path(self._alert_log)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with path.open("a") as f:
+                f.write(f"{ts} {event:<6} {flag}\n")
+        except Exception:
+            logging.warning("failed to write alert log", exc_info=True)
 
     def consume_wrap(self) -> bool:
         """Return True (and reset) if the LCD completed a full rotation since last call."""
@@ -405,6 +526,7 @@ class _Notifier:
         if self._only_alert and not breached:
             self._controller.set_lcd_on(False)
         for flag in sorted(breached):
+            self._log(flag, "BREACH")
             pattern = patterns.get(flag)
             if pattern:
                 self._buzzer.beep_async(**pattern)
@@ -426,11 +548,14 @@ class _Notifier:
         else:
             display_screens, display_tags = screens, tags
 
-        # Beep for monitors that just crossed threshold (before updating self._breached)
+        # Beep and log monitors that just crossed threshold (before updating self._breached)
         for flag in sorted(new_breached - self._breached):
+            self._log(flag, "BREACH")
             pattern = patterns.get(flag)
             if pattern:
                 self._buzzer.beep_async(**pattern)
+        for flag in sorted(self._breached - new_breached):
+            self._log(flag, "CLEAR")
 
         with self._lock:
             self._breached      = new_breached
@@ -504,6 +629,7 @@ def run(args: argparse.Namespace) -> None:
     notifier = _Notifier(
         lcd, buzzer, controller,
         only_alert=getattr(args, "only_alert", False),
+        alert_log=getattr(args, "alert_log", None),
     )
     lcd.on_screen_advance(notifier.on_screen_advance)
 

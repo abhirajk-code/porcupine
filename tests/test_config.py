@@ -264,8 +264,8 @@ def test_cli_overrides_config_file_numeric(tmp_path):
         [display]
         refresh = 10
     """)
-    args = parse_args(["--refresh", "2"], config_path=path)
-    assert args.refresh == pytest.approx(2.0)
+    args = parse_args(["--refresh", "3"], config_path=path)
+    assert args.refresh == pytest.approx(3.0)
 
 
 def test_config_file_overrides_hardcoded_default(tmp_path):
@@ -295,3 +295,23 @@ def test_parse_args_config_flag_missing_file_uses_defaults(tmp_path):
     missing = str(tmp_path / "ghost.conf")
     args = parse_args(["--config", missing])
     assert args.refresh == pytest.approx(5.0)  # hardcoded default
+
+
+# ---------------------------------------------------------------------------
+# parse_args — validation rejects out-of-range values
+# ---------------------------------------------------------------------------
+
+def test_validate_refresh_below_minimum_rejected(tmp_path):
+    with pytest.raises(SystemExit):
+        parse_args(["--refresh", "2"], config_path=str(tmp_path / "none.conf"))
+
+
+def test_validate_refresh_above_maximum_rejected(tmp_path):
+    with pytest.raises(SystemExit):
+        parse_args(["--refresh", "301"], config_path=str(tmp_path / "none.conf"))
+
+
+def test_validate_refresh_boundary_values_accepted(tmp_path):
+    cfg = str(tmp_path / "none.conf")
+    assert parse_args(["--refresh", "3"],   config_path=cfg).refresh == pytest.approx(3.0)
+    assert parse_args(["--refresh", "300"], config_path=cfg).refresh == pytest.approx(300.0)

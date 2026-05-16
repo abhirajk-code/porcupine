@@ -1,6 +1,5 @@
 """I2C LCD driver and display loop (HD44780 + PCF8574 backpack)."""
 import threading
-import time
 from typing import Callable
 
 try:

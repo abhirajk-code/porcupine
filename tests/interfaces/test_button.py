@@ -1,7 +1,6 @@
 """Button tests — no GPIO hardware required."""
 import time
 
-import pytest
 
 from porcupine.interfaces.button import Button, _StubGPIO
 
