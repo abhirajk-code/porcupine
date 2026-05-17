@@ -166,7 +166,7 @@ cmd_set() {
         wifi-every)       cfg_set monitors wifi_every    "$value";;
         disk-warn)        cfg_set alerts   disk_warn     "$value";;
         conn-host)        cfg_set network  conn_host     "$value";;
-        fan-on)           cfg_set fan      fan_on        "$value";;
+        fan-enabled)      cfg_set fan      fan_enabled   "$value";;
         fan-pin)          cfg_set fan      fan_pin       "$value";;
         fan-type)         cfg_set fan      fan_type      "$value";;
         fan-min-duty)     cfg_set fan      fan_min_duty  "$value";;
@@ -211,7 +211,7 @@ Commands:
   set wifi-every  <n>      Show wifi screen every Nth cycle  (default 60)
   set disk-warn <%>        Disk usage warning threshold      (default 85)
   set conn-host <host>     Host to probe for connectivity    (default 8.8.8.8)
-  set fan-on <°C>          Fan start temperature; 0 disables (default 0)
+  set fan-enabled <true|false>  Enable fan control (starts at temp_warn, stops at temp_warn×0.8)
   set fan-pin <n>          Fan GPIO pin (BCM)                (default 19)
   set fan-type <3pin|4pin> Fan PWM frequency                 (default 3pin)
   set fan-min-duty <%>     Fan minimum duty cycle            (default 30)

@@ -132,12 +132,10 @@ configure_interactive() {
     local d_chost;  d_chost="$(_cfg_get  network  conn_host  8.8.8.8)"
     local d_alog;   d_alog="$(_cfg_get   alerts   alert_log  /var/log/porcupine/alerts.log)"
     local d_only;   d_only="$(_cfg_get   display  only_alert false)"
-    local d_fanon;  d_fanon="$(_cfg_get  fan      fan_on     0)"
-    local d_fanpin; d_fanpin="$(_cfg_get fan      fan_pin    19)"
-    local d_ftype;  d_ftype="$(_cfg_get  fan      fan_type   3pin)"
+    local d_fanpin; d_fanpin="$(_cfg_get fan      fan_pin      19)"
+    local d_ftype;  d_ftype="$(_cfg_get  fan      fan_type     3pin)"
     local d_fduty;  d_fduty="$(_cfg_get  fan      fan_min_duty 30)"
-    # Fan enable/disable: fan_on > 0 means enabled
-    local d_fan;    [[ "$d_fanon" != "0" ]] && d_fan="true" || d_fan="false"
+    local d_fan;    d_fan="$(_cfg_get    fan      fan_enabled  false)"
 
     h2 "Hardware"
     prompt      "LCD I2C address  (hex ok, e.g. 0x27 or 0x3f)" "$d_lcd"   LCD_ADDR
@@ -170,14 +168,13 @@ configure_interactive() {
     prompt "Alert log path"                                     "$d_alog"  ALERT_LOG
 
     h2 "Fan control  (GPIO19 / PWM1)"
-    prompt_bool "Enable PWM fan control"                        "$d_fan"   ENABLE_FAN
+    prompt_bool "Enable PWM fan control (starts when temp reaches temp_warn)" "$d_fan" ENABLE_FAN
     if [[ "$ENABLE_FAN" == "true" ]]; then
-        prompt "Fan start temperature (°C)"                     "$d_fanon"  FAN_ON
         prompt "Fan GPIO pin (BCM)"                             "$d_fanpin" FAN_PIN
         prompt "Fan type  (3pin = 1 kHz, 4pin = 25 kHz)"       "$d_ftype"  FAN_TYPE
         prompt "Minimum duty cycle (%, prevents stall)"         "$d_fduty"  FAN_MIN_DUTY
     else
-        FAN_ON="0"; FAN_PIN="$d_fanpin"; FAN_TYPE="$d_ftype"; FAN_MIN_DUTY="$d_fduty"
+        FAN_PIN="$d_fanpin"; FAN_TYPE="$d_ftype"; FAN_MIN_DUTY="$d_fduty"
     fi
 }
 
@@ -189,8 +186,8 @@ configure_noninteractive() {
     ENABLE_WIFI="true"
     TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"; BAT_WARN="40"; DISK_WARN="85"
     CONN_HOST="8.8.8.8"; ALERT_LOG="/var/log/porcupine/alerts.log"
-    # Fan: disabled by default (fan_on=0); set fan_on to enable
-    FAN_ON="0"; FAN_PIN="19"; FAN_TYPE="3pin"; FAN_MIN_DUTY="30"
+    # Fan: disabled by default
+    ENABLE_FAN="false"; FAN_PIN="19"; FAN_TYPE="3pin"; FAN_MIN_DUTY="30"
     info "Non-interactive — using all defaults"
 }
 
@@ -245,7 +242,7 @@ disk_warn = ${DISK_WARN}
 alert_log = ${ALERT_LOG}
 
 [fan]
-fan_on       = ${FAN_ON}
+fan_enabled  = ${ENABLE_FAN}
 fan_pin      = ${FAN_PIN}
 fan_type     = ${FAN_TYPE}
 fan_min_duty = ${FAN_MIN_DUTY}

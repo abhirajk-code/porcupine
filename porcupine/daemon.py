@@ -653,7 +653,7 @@ def _ensure_fan(args: argparse.Namespace) -> None:
             str(fan_bin),
             "--fan-pin",  str(args.fan_pin),
             "--fan-type", args.fan_type,
-            "--fan-on",   str(args.fan_on),
+            "--fan-on",   str(args.temp_warn),
             "--min-duty", str(args.fan_min_duty),
         ],
         start_new_session=True,
@@ -746,7 +746,7 @@ def run(args: argparse.Namespace) -> None:
             _apply_escalation(monitors, breached, effective_every)
             notifier.update(monitors, last_data, breached, d_cycle, wrapped=wrapped)
 
-            if args.fan_on > 0 and last_data.get("cpu_temp_c", 0.0) >= args.fan_on:
+            if args.fan_enabled and last_data.get("cpu_temp_c", 0.0) >= args.temp_warn:
                 _ensure_fan(args)
 
     except KeyboardInterrupt:

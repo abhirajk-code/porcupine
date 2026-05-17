@@ -128,22 +128,21 @@ def mock_gpio(monkeypatch):
 
 
 def test_run_exits_immediately_below_stop_at(tmp_path, monkeypatch, mock_gpio):
-    # Temperature already below stop_at (45 * 0.9 = 40.5) — loop exits first iteration
+    # stop_at = 45 * 0.8 = 36.0 °C — temp at 35 °C exits immediately
     temp_file = tmp_path / "temp"
-    temp_file.write_text("40000")  # 40.0 °C < 40.5 stop_at
+    temp_file.write_text("35000")  # 35.0 °C < 36.0 stop_at
     pid_file = tmp_path / "fan.pid"
     monkeypatch.setattr(fan_control, "_TEMP_PATH", temp_file)
     monkeypatch.setattr(fan_control, "_PID_FILE",  pid_file)
 
     args = fan_control.parse_args(["--fan-on", "45", "--fan-pin", "19"])
-    # run() should return cleanly (not spin indefinitely)
     fan_control.run(args)
     assert not pid_file.exists()
 
 
 def test_run_cleans_up_pid_on_exit(tmp_path, monkeypatch, mock_gpio):
     temp_file = tmp_path / "temp"
-    temp_file.write_text("39000")  # 39 °C < 40.5
+    temp_file.write_text("35000")  # 35 °C < 36.0 stop_at
     pid_file  = tmp_path / "fan.pid"
     monkeypatch.setattr(fan_control, "_TEMP_PATH", temp_file)
     monkeypatch.setattr(fan_control, "_PID_FILE",  pid_file)

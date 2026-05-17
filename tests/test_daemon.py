@@ -20,7 +20,7 @@ def _args(**overrides) -> argparse.Namespace:
         refresh=3.0,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0, disk_warn=85.0,
         conn_host="8.8.8.8", alert_log=None, only_alert=False,
-        fan_on=0.0, fan_pin=19, fan_type="3pin", fan_min_duty=30,
+        fan_enabled=False, fan_pin=19, fan_type="3pin", fan_min_duty=30,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -1018,12 +1018,12 @@ def test_ensure_fan_spawns_when_not_running(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon, "_FAN_PID_FILE", tmp_path / "fan.pid")
     spawned = []
     monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
-    args = _args(fan_on=45.0, fan_pin=19, fan_type="3pin", fan_min_duty=30)
+    args = _args(fan_enabled=True, fan_pin=19, fan_type="3pin", fan_min_duty=30, temp_warn=80.0)
     daemon._ensure_fan(args)
     assert len(spawned) == 1
     cmd = spawned[0]
     assert "--fan-on" in cmd
-    assert "45.0" in cmd
+    assert "80.0" in cmd   # uses temp_warn, not a separate fan_on
     assert "--fan-type" in cmd
     assert "3pin" in cmd
 
@@ -1035,7 +1035,7 @@ def test_ensure_fan_noop_when_already_running(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon, "_FAN_PID_FILE", pid_file)
     spawned = []
     monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
-    daemon._ensure_fan(_args(fan_on=45.0))
+    daemon._ensure_fan(_args(fan_enabled=True, temp_warn=80.0))
     assert spawned == []
 
 
@@ -1043,7 +1043,7 @@ def test_ensure_fan_4pin_passes_correct_type(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon, "_FAN_PID_FILE", tmp_path / "fan.pid")
     spawned = []
     monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
-    args = _args(fan_on=45.0, fan_pin=13, fan_type="4pin", fan_min_duty=20)
+    args = _args(fan_enabled=True, fan_pin=13, fan_type="4pin", fan_min_duty=20, temp_warn=80.0)
     daemon._ensure_fan(args)
     cmd = spawned[0]
     assert "4pin" in cmd

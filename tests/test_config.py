@@ -324,25 +324,25 @@ def test_validate_refresh_boundary_values_accepted(tmp_path):
 def test_load_config_reads_fan_section(tmp_path):
     path = write_conf(tmp_path, """
         [fan]
-        fan_on       = 45
+        fan_enabled  = true
         fan_pin      = 19
         fan_type     = 4pin
         fan_min_duty = 20
     """)
     cfg = load_config(path)
-    assert cfg["fan_on"]       == pytest.approx(45.0)
+    assert cfg["fan_enabled"]  is True
     assert cfg["fan_pin"]      == 19
     assert cfg["fan_type"]     == "4pin"
     assert cfg["fan_min_duty"] == 20
 
 
-def test_load_config_fan_disabled_zero(tmp_path):
+def test_load_config_fan_disabled(tmp_path):
     path = write_conf(tmp_path, """
         [fan]
-        fan_on = 0
+        fan_enabled = false
     """)
     cfg = load_config(path)
-    assert cfg["fan_on"] == pytest.approx(0.0)
+    assert cfg["fan_enabled"] is False
 
 
 def test_load_config_missing_fan_section_returns_no_fan_keys(tmp_path):
@@ -351,8 +351,8 @@ def test_load_config_missing_fan_section_returns_no_fan_keys(tmp_path):
         cpu_every = 5
     """)
     cfg = load_config(path)
-    assert "fan_on"  not in cfg
-    assert "fan_pin" not in cfg
+    assert "fan_enabled" not in cfg
+    assert "fan_pin"     not in cfg
 
 
 # ---------------------------------------------------------------------------
@@ -361,19 +361,25 @@ def test_load_config_missing_fan_section_returns_no_fan_keys(tmp_path):
 
 def test_parse_args_fan_defaults(tmp_path):
     args = parse_args([], config_path=str(tmp_path / "none.conf"))
-    assert args.fan_on       == pytest.approx(0.0)
+    assert args.fan_enabled  is False
     assert args.fan_pin      == 19
     assert args.fan_type     == "3pin"
     assert args.fan_min_duty == 30
 
 
+def test_parse_args_fan_enabled_flag(tmp_path):
+    cfg = str(tmp_path / "none.conf")
+    args = parse_args(["--fan-enabled"], config_path=cfg)
+    assert args.fan_enabled is True
+
+
 def test_parse_args_fan_cli_flags(tmp_path):
     cfg = str(tmp_path / "none.conf")
     args = parse_args(
-        ["--fan-on", "50", "--fan-pin", "13", "--fan-type", "4pin", "--fan-min-duty", "20"],
+        ["--fan-enabled", "--fan-pin", "13", "--fan-type", "4pin", "--fan-min-duty", "20"],
         config_path=cfg,
     )
-    assert args.fan_on       == pytest.approx(50.0)
+    assert args.fan_enabled  is True
     assert args.fan_pin      == 13
     assert args.fan_type     == "4pin"
     assert args.fan_min_duty == 20
@@ -382,25 +388,25 @@ def test_parse_args_fan_cli_flags(tmp_path):
 def test_parse_args_fan_config_file(tmp_path):
     path = write_conf(tmp_path, """
         [fan]
-        fan_on       = 45
+        fan_enabled  = true
         fan_pin      = 19
         fan_type     = 3pin
         fan_min_duty = 30
     """)
     args = parse_args([], config_path=path)
-    assert args.fan_on   == pytest.approx(45.0)
-    assert args.fan_type == "3pin"
+    assert args.fan_enabled is True
+    assert args.fan_type    == "3pin"
 
 
 def test_parse_args_fan_cli_overrides_config(tmp_path):
     path = write_conf(tmp_path, """
         [fan]
-        fan_on   = 45
-        fan_type = 3pin
+        fan_enabled = false
+        fan_type    = 3pin
     """)
-    args = parse_args(["--fan-on", "55", "--fan-type", "4pin"], config_path=path)
-    assert args.fan_on   == pytest.approx(55.0)
-    assert args.fan_type == "4pin"
+    args = parse_args(["--fan-enabled", "--fan-type", "4pin"], config_path=path)
+    assert args.fan_enabled is True
+    assert args.fan_type    == "4pin"
 
 
 def test_validate_fan_invalid_min_duty_rejected(tmp_path):
@@ -412,7 +418,7 @@ def test_validate_fan_invalid_min_duty_rejected(tmp_path):
 def test_validate_fan_pin_out_of_range_when_enabled(tmp_path):
     cfg = str(tmp_path / "none.conf")
     with pytest.raises(SystemExit):
-        parse_args(["--fan-on", "45", "--fan-pin", "99"], config_path=cfg)
+        parse_args(["--fan-enabled", "--fan-pin", "99"], config_path=cfg)
 
 
 # ---------------------------------------------------------------------------

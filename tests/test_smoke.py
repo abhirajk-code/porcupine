@@ -102,7 +102,7 @@ def test_parse_args_defaults_without_config(tmp_path):
     assert args.button_pin == 4
     assert args.buzzer_pin == 18
     assert args.refresh    == pytest.approx(5.0)
-    assert args.fan_on     == pytest.approx(0.0)
+    assert args.fan_enabled is False
 
 
 def test_parse_args_no_power_flag(tmp_path):

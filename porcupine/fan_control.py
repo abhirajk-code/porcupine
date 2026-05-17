@@ -35,7 +35,7 @@ def run(args: argparse.Namespace) -> None:
         sys.exit("[porcupine-fan] RPi.GPIO not available — aborting")
 
     freq    = 25_000 if args.fan_type == "4pin" else 1_000
-    stop_at = args.fan_on * 0.9
+    stop_at = args.fan_on * 0.8
 
     _PID_FILE.write_text(str(os.getpid()))
 

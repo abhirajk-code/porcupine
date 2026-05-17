@@ -69,8 +69,8 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
         result["fan_pin"] = cp.getint("fan", "fan_pin")
     if cp.has_option("fan", "fan_type"):
         result["fan_type"] = cp.get("fan", "fan_type")
-    if cp.has_option("fan", "fan_on"):
-        result["fan_on"] = cp.getfloat("fan", "fan_on")
+    if cp.has_option("fan", "fan_enabled"):
+        result["fan_enabled"] = cp.getboolean("fan", "fan_enabled")
     if cp.has_option("fan", "fan_min_duty"):
         result["fan_min_duty"] = cp.getint("fan", "fan_min_duty")
 
@@ -189,10 +189,9 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         help="3pin uses 1 kHz PWM; 4pin uses 25 kHz PWM (default: 3pin)",
     )
     parser.add_argument(
-        "--fan-on", type=float,
-        default=file_cfg.get("fan_on", 0.0),
-        metavar="C",
-        help="Temperature °C at which to start fan; 0 disables fan control (default: 0)",
+        "--fan-enabled", action="store_true",
+        default=file_cfg.get("fan_enabled", False),
+        help="Enable PWM fan control; fan starts at temp_warn, stops at temp_warn × 0.8 (default: false)",
     )
     parser.add_argument(
         "--fan-min-duty", type=int,
@@ -238,11 +237,9 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         errors.append(f"--temp-warn {args.temp_warn} must be between 0 and 120 °C")
 
     # Fan validation (only checked when fan control is enabled).
-    if args.fan_on > 0:
+    if args.fan_enabled:
         if not (0 <= args.fan_pin <= 27):
             errors.append(f"--fan-pin {args.fan_pin} is out of range (0–27)")
-        if not (1.0 <= args.fan_on <= 120.0):
-            errors.append(f"--fan-on {args.fan_on} must be between 1 and 120 °C")
     if not (0 <= args.fan_min_duty <= 100):
         errors.append(f"--fan-min-duty {args.fan_min_duty} must be between 0 and 100")
 
