@@ -1,6 +1,5 @@
 """Fan controller tests — no hardware required."""
 import sys
-import types
 
 import pytest
 
@@ -85,67 +84,89 @@ def test_parse_args_custom_values():
 
 
 # ---------------------------------------------------------------------------
-# run() — stop-at logic (mocked GPIO + temp)
+# run() — stop-at logic (PWM stubbed out entirely)
 # ---------------------------------------------------------------------------
 
+class _StubPWM:
+    """No-op PWM — lets run() loop tests focus on temp/stop logic."""
+    duties: list
+
+    def __init__(self, *_, **__):
+        self.duties = []
+
+    def change_duty(self, duty: float) -> None:
+        self.duties.append(duty)
+
+    def cleanup(self) -> None:
+        pass
+
+
 @pytest.fixture()
-def mock_gpio(monkeypatch):
-    """Inject a minimal RPi.GPIO stub into sys.modules."""
-    pwm_mock = types.SimpleNamespace(
-        start=lambda d: None,
-        stop=lambda: None,
-        ChangeDutyCycle=lambda d: None,
-    )
+def stub_pwm(monkeypatch):
+    """Replace _PWM with the no-op stub and return the instance holder."""
+    instances: list[_StubPWM] = []
 
-    class _GPIO:
-        BCM = 11
-        OUT = 0
-        @staticmethod
-        def setwarnings(_): pass
-        @staticmethod
-        def setmode(_): pass
-        @staticmethod
-        def setup(*_): pass
-        @staticmethod
-        def PWM(*_): return pwm_mock
-        @staticmethod
-        def cleanup(*_): pass
+    def _make(*args, **kwargs):
+        inst = _StubPWM(*args, **kwargs)
+        instances.append(inst)
+        return inst
 
-    rpi_mod  = types.ModuleType("RPi")
-    gpio_mod = types.ModuleType("RPi.GPIO")
-    gpio_mod.__dict__.update({k: v for k, v in vars(_GPIO).items() if not k.startswith("__")})
-    for name in ("BCM", "OUT"):
-        setattr(gpio_mod, name, getattr(_GPIO, name))
-    gpio_mod.setwarnings      = _GPIO.setwarnings
-    gpio_mod.setmode          = _GPIO.setmode
-    gpio_mod.setup            = _GPIO.setup
-    gpio_mod.PWM              = _GPIO.PWM
-    gpio_mod.cleanup          = _GPIO.cleanup
-
-    monkeypatch.setitem(sys.modules, "RPi",      rpi_mod)
-    monkeypatch.setitem(sys.modules, "RPi.GPIO", gpio_mod)
-    return gpio_mod
+    monkeypatch.setattr(fan_control, "_PWM", _make)
+    return instances
 
 
-def test_run_exits_immediately_below_stop_at(tmp_path, monkeypatch, mock_gpio):
-    # stop_at = 45 * 0.8 = 36.0 °C — temp at 35 °C exits immediately
+def test_run_exits_immediately_below_stop_at(tmp_path, monkeypatch, stub_pwm):
+    # stop_at = 45 * 0.8 = 36.0 °C — temp at 35 °C exits on first check
     temp_file = tmp_path / "temp"
-    temp_file.write_text("35000")  # 35.0 °C < 36.0 stop_at
+    temp_file.write_text("35000")  # 35.0 °C < 36.0
     pid_file = tmp_path / "fan.pid"
     monkeypatch.setattr(fan_control, "_TEMP_PATH", temp_file)
     monkeypatch.setattr(fan_control, "_PID_FILE",  pid_file)
 
-    args = fan_control.parse_args(["--fan-on", "45", "--fan-pin", "19"])
-    fan_control.run(args)
+    fan_control.run(fan_control.parse_args(["--fan-on", "45", "--fan-pin", "19"]))
     assert not pid_file.exists()
 
 
-def test_run_cleans_up_pid_on_exit(tmp_path, monkeypatch, mock_gpio):
+def test_run_cleans_up_pid_on_exit(tmp_path, monkeypatch, stub_pwm):
     temp_file = tmp_path / "temp"
-    temp_file.write_text("35000")  # 35 °C < 36.0 stop_at
+    temp_file.write_text("35000")
     pid_file  = tmp_path / "fan.pid"
     monkeypatch.setattr(fan_control, "_TEMP_PATH", temp_file)
     monkeypatch.setattr(fan_control, "_PID_FILE",  pid_file)
 
     fan_control.run(fan_control.parse_args(["--fan-on", "45"]))
     assert not pid_file.exists()
+
+
+# ---------------------------------------------------------------------------
+# _PWM backend selection
+# ---------------------------------------------------------------------------
+
+def test_pwm_uses_lgpio_when_available(monkeypatch):
+    """_PWM._try_lgpio is called first; RPi.GPIO is never touched."""
+    calls = []
+
+    class _FakeLgpio:
+        @staticmethod
+        def gpiochip_open(chip): return 99
+        @staticmethod
+        def gpio_claim_output(h, pin, val): calls.append(("claim", pin))
+        @staticmethod
+        def tx_pwm(h, pin, freq, duty): calls.append(("pwm", duty))
+        @staticmethod
+        def gpio_free(h, pin): pass
+        @staticmethod
+        def gpiochip_close(h): pass
+
+    from pathlib import Path
+    monkeypatch.setitem(sys.modules, "lgpio", _FakeLgpio())
+    monkeypatch.setattr(Path, "exists", lambda self: "/dev/gpiochip" in str(self))
+
+    pwm = fan_control._PWM(pin=19, freq=1000, initial_duty=30.0)
+    assert pwm._lgpio is not None
+    assert ("claim", 19) in calls
+
+    pwm.change_duty(50.0)
+    assert ("pwm", 50.0) in calls
+
+    pwm.cleanup()  # must not raise

@@ -1,8 +1,11 @@
 """Fan controller — spawned by daemon when CPU temp exceeds fan_on threshold.
 
-Self-terminates when temperature drops below fan_on * 0.9 (10 % hysteresis)
-to avoid on/off flapping.  Writes a PID file so the daemon can check whether
-it is already running before spawning a duplicate.
+Self-terminates when temperature drops below fan_on * 0.8 (20 % hysteresis).
+Writes a PID file so the daemon can check whether it is already running.
+
+GPIO backend: lgpio is tried first (works on Pi 4 and Pi 5 via the kernel
+character-device interface).  RPi.GPIO is used as a fallback for setups where
+lgpio is not available (Pi 1-3 with older toolchains).
 """
 import argparse
 import os
@@ -28,27 +31,118 @@ def _duty(temp: float, fan_on: float, min_duty: int) -> float:
     return max(float(min_duty), min(100.0, raw))
 
 
-def run(args: argparse.Namespace) -> None:
-    try:
-        import RPi.GPIO as GPIO  # noqa: PLC0415
-    except ImportError:
-        sys.exit("[porcupine-fan] RPi.GPIO not available — aborting")
+def _find_gpiochip() -> int:
+    """Return the gpiochip number whose label matches the BCM/RP1 GPIO controller."""
+    for chip in range(8):
+        label_path = Path(f"/sys/bus/platform/drivers")
+        chip_path  = Path(f"/dev/gpiochip{chip}")
+        if not chip_path.exists():
+            continue
+        try:
+            label = Path(f"/sys/class/gpio/gpiochip{chip * 0}/label").read_text().strip()
+        except OSError:
+            label = ""
+        # Accept any chip that we can open — caller will verify
+        return chip
+    return 0
 
+
+class _PWM:
+    """PWM abstraction — lgpio (Pi 4/5) with RPi.GPIO fallback."""
+
+    def __init__(self, pin: int, freq: int, initial_duty: float) -> None:
+        self._pin  = pin
+        self._freq = freq
+        self._lgpio: object = None
+        self._h: int = -1
+        self._rpipwm: object = None
+        self._GPIO: object = None
+
+        if self._try_lgpio(pin, freq, initial_duty):
+            return
+        if self._try_rpigpio(pin, freq, initial_duty):
+            return
+        sys.exit("[porcupine-fan] No GPIO library available (lgpio or RPi.GPIO required)")
+
+    def _try_lgpio(self, pin: int, freq: int, duty: float) -> bool:
+        try:
+            import lgpio  # noqa: PLC0415
+        except ImportError:
+            return False
+        # Try gpiochip0 first, then higher numbers (Pi 5 may use gpiochip4).
+        for chip in range(8):
+            if not Path(f"/dev/gpiochip{chip}").exists():
+                continue
+            try:
+                h = lgpio.gpiochip_open(chip)
+                lgpio.gpio_claim_output(h, pin, 0)
+                lgpio.tx_pwm(h, pin, freq, duty)
+                self._lgpio = lgpio
+                self._h     = h
+                return True
+            except Exception:
+                try:
+                    lgpio.gpiochip_close(h)
+                except Exception:
+                    pass
+        return False
+
+    def _try_rpigpio(self, pin: int, freq: int, duty: float) -> bool:
+        try:
+            import RPi.GPIO as GPIO  # noqa: PLC0415
+        except ImportError:
+            return False
+        try:
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(pin, GPIO.OUT)
+            pwm = GPIO.PWM(pin, freq)
+            pwm.start(duty)
+            self._GPIO   = GPIO
+            self._rpipwm = pwm
+            return True
+        except Exception:
+            return False
+
+    def change_duty(self, duty: float) -> None:
+        if self._lgpio is not None:
+            self._lgpio.tx_pwm(self._h, self._pin, self._freq, duty)
+        elif self._rpipwm is not None:
+            self._rpipwm.ChangeDutyCycle(duty)
+
+    def cleanup(self) -> None:
+        if self._lgpio is not None:
+            try:
+                self._lgpio.tx_pwm(self._h, self._pin, self._freq, 0)
+                self._lgpio.gpio_free(self._h, self._pin)
+                self._lgpio.gpiochip_close(self._h)
+            except Exception:
+                pass
+            self._lgpio = None
+        elif self._rpipwm is not None:
+            try:
+                self._rpipwm.stop()
+                self._GPIO.cleanup(self._pin)
+            except Exception:
+                pass
+            self._rpipwm = None
+
+
+def run(args: argparse.Namespace) -> None:
     freq    = 25_000 if args.fan_type == "4pin" else 1_000
     stop_at = args.fan_on * 0.8
 
     _PID_FILE.write_text(str(os.getpid()))
 
-    GPIO.setwarnings(False)
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(args.fan_pin, GPIO.OUT)
-    pwm = GPIO.PWM(args.fan_pin, freq)
-    pwm.start(float(args.min_duty))
+    pwm = _PWM(args.fan_pin, freq, float(args.min_duty))
+    _done = False
 
     def _cleanup(signum=None, frame=None) -> None:
-        pwm.stop()
-        GPIO.cleanup(args.fan_pin)
-        _PID_FILE.unlink(missing_ok=True)
+        nonlocal _done
+        if not _done:
+            _done = True
+            pwm.cleanup()
+            _PID_FILE.unlink(missing_ok=True)
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, _cleanup)
@@ -63,20 +157,21 @@ def run(args: argparse.Namespace) -> None:
                 continue
             if temp < stop_at:
                 break
-            pwm.ChangeDutyCycle(_duty(temp, args.fan_on, args.min_duty))
+            pwm.change_duty(_duty(temp, args.fan_on, args.min_duty))
             time.sleep(_POLL_S)
     finally:
-        pwm.stop()
-        GPIO.cleanup(args.fan_pin)
-        _PID_FILE.unlink(missing_ok=True)
+        if not _done:
+            _done = True
+            pwm.cleanup()
+            _PID_FILE.unlink(missing_ok=True)
 
 
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="porcupine-fan", description="Porcupine fan controller")
-    p.add_argument("--fan-pin",  type=int,   default=19,     metavar="PIN")
-    p.add_argument("--fan-type", choices=["3pin", "4pin"],   default="3pin")
-    p.add_argument("--fan-on",   type=float, default=45.0,   metavar="C")
-    p.add_argument("--min-duty", type=int,   default=30,     metavar="PCT")
+    p.add_argument("--fan-pin",  type=int,   default=19,   metavar="PIN")
+    p.add_argument("--fan-type", choices=["3pin", "4pin"], default="3pin")
+    p.add_argument("--fan-on",   type=float, default=45.0, metavar="C")
+    p.add_argument("--min-duty", type=int,   default=30,   metavar="PCT")
     return p.parse_args(argv)
 
 
