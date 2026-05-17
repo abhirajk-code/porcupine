@@ -19,7 +19,7 @@ def _args(**overrides) -> argparse.Namespace:
         lcd_addr=0x27, button_pin=4, buzzer_pin=18, ina219_addr=0x41,
         refresh=3.0,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0, disk_warn=85.0,
-        conn_host="8.8.8.8", alert_log=None,
+        conn_host="8.8.8.8", alert_log=None, only_alert=False,
         fan_on=0.0, fan_pin=19, fan_type="3pin", fan_min_duty=30,
     )
     defaults.update(overrides)
@@ -577,6 +577,23 @@ def test_non_alertable_monitors_have_no_beep():
     for m in non_alertable:
         assert m.beep_pattern() is None
         assert m.has_breach({}) is False
+
+
+def test_alertable_monitors_have_beep_pattern():
+    alertable = [
+        daemon._TempMonitor(),
+        daemon._CpuMemMonitor(),
+        daemon._PowerMonitor(),
+        daemon._DiskMonitor(),
+        daemon._WifiMonitor(),
+        daemon._ConnectivityMonitor(),
+    ]
+    for m in alertable:
+        pattern = m.beep_pattern()
+        assert pattern is not None, f"{type(m).__name__} must return a beep pattern"
+        assert isinstance(pattern["count"],       int)
+        assert isinstance(pattern["duration_ms"], int)
+        assert isinstance(pattern["gap_ms"],      int)
 
 
 # ---------------------------------------------------------------------------

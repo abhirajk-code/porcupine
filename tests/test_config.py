@@ -414,3 +414,90 @@ def test_validate_fan_pin_out_of_range_when_enabled(tmp_path):
     with pytest.raises(SystemExit):
         parse_args(["--fan-on", "45", "--fan-pin", "99"], config_path=cfg)
 
+
+# ---------------------------------------------------------------------------
+# load_config — alerts section (bat_warn, disk_warn, conn_host, alert_log)
+# ---------------------------------------------------------------------------
+
+def test_load_config_reads_bat_warn(tmp_path):
+    path = write_conf(tmp_path, """
+        [alerts]
+        bat_warn = 20
+    """)
+    assert load_config(path)["bat_warn"] == pytest.approx(20.0)
+
+
+def test_load_config_reads_disk_warn(tmp_path):
+    path = write_conf(tmp_path, """
+        [alerts]
+        disk_warn = 90
+    """)
+    assert load_config(path)["disk_warn"] == pytest.approx(90.0)
+
+
+def test_load_config_reads_alert_log(tmp_path):
+    path = write_conf(tmp_path, """
+        [alerts]
+        alert_log = /var/log/porcupine/alerts.log
+    """)
+    assert load_config(path)["alert_log"] == "/var/log/porcupine/alerts.log"
+
+
+def test_load_config_reads_conn_host(tmp_path):
+    path = write_conf(tmp_path, """
+        [network]
+        conn_host = 1.1.1.1
+    """)
+    assert load_config(path)["conn_host"] == "1.1.1.1"
+
+
+def test_load_config_reads_ina219_addr(tmp_path):
+    path = write_conf(tmp_path, """
+        [hardware]
+        ina219_addr = 0x40
+    """)
+    assert load_config(path)["ina219_addr"] == 0x40
+
+
+def test_load_config_reads_only_alert(tmp_path):
+    path = write_conf(tmp_path, """
+        [display]
+        only_alert = true
+    """)
+    assert load_config(path)["only_alert"] is True
+
+
+# ---------------------------------------------------------------------------
+# parse_args — alert/network/display flags
+# ---------------------------------------------------------------------------
+
+def test_parse_args_bat_warn_default(tmp_path):
+    args = parse_args([], config_path=str(tmp_path / "none.conf"))
+    assert args.bat_warn == pytest.approx(40.0)
+
+
+def test_parse_args_disk_warn_default(tmp_path):
+    args = parse_args([], config_path=str(tmp_path / "none.conf"))
+    assert args.disk_warn == pytest.approx(85.0)
+
+
+def test_parse_args_conn_host_default(tmp_path):
+    args = parse_args([], config_path=str(tmp_path / "none.conf"))
+    assert args.conn_host == "8.8.8.8"
+
+
+def test_parse_args_disk_warn_cli(tmp_path):
+    args = parse_args(["--disk-warn", "90"], config_path=str(tmp_path / "none.conf"))
+    assert args.disk_warn == pytest.approx(90.0)
+
+
+def test_parse_args_conn_host_cli(tmp_path):
+    args = parse_args(["--conn-host", "1.1.1.1"], config_path=str(tmp_path / "none.conf"))
+    assert args.conn_host == "1.1.1.1"
+
+
+def test_validate_disk_warn_out_of_range(tmp_path):
+    cfg = str(tmp_path / "none.conf")
+    with pytest.raises(SystemExit):
+        parse_args(["--disk-warn", "101"], config_path=cfg)
+

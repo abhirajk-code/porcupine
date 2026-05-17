@@ -22,16 +22,21 @@ def test_top_level_package_has_version():
 
 
 def test_all_monitor_modules_importable():
-    from porcupine.monitors import boot, power, cpu_mem, temperature, network, gpio_pins
-    for mod in (boot, power, cpu_mem, temperature, network, gpio_pins):
+    from porcupine.monitors import (
+        boot, power, cpu_mem, temperature, network, gpio_pins,
+        disk, connectivity, wifi,
+    )
+    for mod in (boot, power, cpu_mem, temperature, network, gpio_pins,
+                disk, connectivity, wifi):
         assert callable(mod.read)
 
 
 def test_all_interface_classes_importable():
     from porcupine.interfaces.lcd import LCD
     from porcupine.interfaces.button import Button
-    from porcupine.interfaces.buzzer import Buzzer, AlertChecker
-    for cls in (LCD, Button, Buzzer, AlertChecker):
+    from porcupine.interfaces.button_controller import ButtonController
+    from porcupine.interfaces.buzzer import Buzzer
+    for cls in (LCD, Button, ButtonController, Buzzer):
         assert callable(cls)
 
 
@@ -64,7 +69,8 @@ def test_help_lists_monitor_flags():
         [sys.executable, "-m", "porcupine", "--help"],
         capture_output=True, text=True,
     )
-    for flag in ("--boot", "--power", "--cpu", "--temp", "--net", "--gpio"):
+    for flag in ("--boot", "--power", "--cpu", "--temp", "--net", "--gpio",
+                 "--disk", "--conn", "--wifi"):
         assert flag in result.stdout
 
 
@@ -89,10 +95,14 @@ def test_parse_args_defaults_without_config(tmp_path):
     assert args.temp_every  == 1
     assert args.net_every   == 10
     assert args.gpio_every  == 2
+    assert args.disk_every  == 30
+    assert args.conn_every  == 12
+    assert args.wifi_every  == 60
     assert args.lcd_addr   == 0x27
     assert args.button_pin == 4
     assert args.buzzer_pin == 18
     assert args.refresh    == pytest.approx(5.0)
+    assert args.fan_on     == pytest.approx(0.0)
 
 
 def test_parse_args_no_power_flag(tmp_path):
