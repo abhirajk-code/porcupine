@@ -64,6 +64,16 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     if cp.has_option("alerts", "alert_log"):
         result["alert_log"] = cp.get("alerts", "alert_log")
 
+    # [fan]
+    if cp.has_option("fan", "fan_pin"):
+        result["fan_pin"] = cp.getint("fan", "fan_pin")
+    if cp.has_option("fan", "fan_type"):
+        result["fan_type"] = cp.get("fan", "fan_type")
+    if cp.has_option("fan", "fan_on"):
+        result["fan_on"] = cp.getfloat("fan", "fan_on")
+    if cp.has_option("fan", "fan_min_duty"):
+        result["fan_min_duty"] = cp.getint("fan", "fan_min_duty")
+
     return result
 
 
@@ -168,6 +178,29 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         help="LCD stays off until a threshold is breached; shows only the breached monitor(s)",
     )
     parser.add_argument(
+        "--fan-pin", type=int,
+        default=file_cfg.get("fan_pin", 19),
+        metavar="PIN",
+        help="BCM pin for fan PWM (default: 19 / GPIO19 / PWM1)",
+    )
+    parser.add_argument(
+        "--fan-type", choices=["3pin", "4pin"],
+        default=file_cfg.get("fan_type", "3pin"),
+        help="3pin uses 1 kHz PWM; 4pin uses 25 kHz PWM (default: 3pin)",
+    )
+    parser.add_argument(
+        "--fan-on", type=float,
+        default=file_cfg.get("fan_on", 0.0),
+        metavar="C",
+        help="Temperature °C at which to start fan; 0 disables fan control (default: 0)",
+    )
+    parser.add_argument(
+        "--fan-min-duty", type=int,
+        default=file_cfg.get("fan_min_duty", 30),
+        metavar="PCT",
+        help="Minimum PWM duty cycle %% when fan is running (default: 30)",
+    )
+    parser.add_argument(
         "--config",
         default=config_path,
         metavar="PATH",
@@ -203,6 +236,15 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     # Temperature threshold sanity check.
     if not (0.0 <= args.temp_warn <= 120.0):
         errors.append(f"--temp-warn {args.temp_warn} must be between 0 and 120 °C")
+
+    # Fan validation (only checked when fan control is enabled).
+    if args.fan_on > 0:
+        if not (0 <= args.fan_pin <= 27):
+            errors.append(f"--fan-pin {args.fan_pin} is out of range (0–27)")
+        if not (1.0 <= args.fan_on <= 120.0):
+            errors.append(f"--fan-on {args.fan_on} must be between 1 and 120 °C")
+    if not (0 <= args.fan_min_duty <= 100):
+        errors.append(f"--fan-min-duty {args.fan_min_duty} must be between 0 and 100")
 
     # Refresh interval must be sensible.
     if not (3.0 <= args.refresh <= 300.0):

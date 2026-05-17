@@ -3,8 +3,10 @@ import argparse
 import configparser
 import logging
 import math
+import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime
@@ -625,6 +627,42 @@ def _wifi_startup(lcd: LCD) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Fan controller helpers
+# ---------------------------------------------------------------------------
+
+_FAN_PID_FILE = Path("/run/porcupine-fan.pid")
+
+
+def _fan_running() -> bool:
+    """Return True if a fan controller process is alive (PID file + signal check)."""
+    try:
+        pid = int(_FAN_PID_FILE.read_text().strip())
+        os.kill(pid, 0)
+        return True
+    except (FileNotFoundError, ValueError, ProcessLookupError, OSError):
+        return False
+
+
+def _ensure_fan(args: argparse.Namespace) -> None:
+    """Spawn porcupine-fan if it is not already running."""
+    if _fan_running():
+        return
+    fan_bin = Path(sys.executable).parent / "porcupine-fan"
+    subprocess.Popen(
+        [
+            str(fan_bin),
+            "--fan-pin",  str(args.fan_pin),
+            "--fan-type", args.fan_type,
+            "--fan-on",   str(args.fan_on),
+            "--min-duty", str(args.fan_min_duty),
+        ],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -707,6 +745,9 @@ def run(args: argparse.Namespace) -> None:
             breached = {m.flag for m in monitors if m.has_breach(last_data)}
             _apply_escalation(monitors, breached, effective_every)
             notifier.update(monitors, last_data, breached, d_cycle, wrapped=wrapped)
+
+            if args.fan_on > 0 and last_data.get("cpu_temp_c", 0.0) >= args.fan_on:
+                _ensure_fan(args)
 
     except KeyboardInterrupt:
         pass

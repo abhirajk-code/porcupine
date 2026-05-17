@@ -20,6 +20,7 @@ def _args(**overrides) -> argparse.Namespace:
         refresh=3.0,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0, disk_warn=85.0,
         conn_host="8.8.8.8", alert_log=None,
+        fan_on=0.0, fan_pin=19, fan_type="3pin", fan_min_duty=30,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -970,3 +971,64 @@ def test_wifi_startup_no_hw_shows_once_and_returns():
         daemon._wifi_startup(lcd)
 
     assert lcd.show.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Fan controller helpers
+# ---------------------------------------------------------------------------
+
+def test_fan_running_no_pid_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(daemon, "_FAN_PID_FILE", tmp_path / "fan.pid")
+    assert daemon._fan_running() is False
+
+
+def test_fan_running_stale_pid(tmp_path, monkeypatch):
+    pid_file = tmp_path / "fan.pid"
+    pid_file.write_text("99999999")  # PID that almost certainly does not exist
+    monkeypatch.setattr(daemon, "_FAN_PID_FILE", pid_file)
+    assert daemon._fan_running() is False
+
+
+def test_fan_running_own_pid(tmp_path, monkeypatch):
+    import os
+    pid_file = tmp_path / "fan.pid"
+    pid_file.write_text(str(os.getpid()))
+    monkeypatch.setattr(daemon, "_FAN_PID_FILE", pid_file)
+    assert daemon._fan_running() is True
+
+
+def test_ensure_fan_spawns_when_not_running(tmp_path, monkeypatch):
+    monkeypatch.setattr(daemon, "_FAN_PID_FILE", tmp_path / "fan.pid")
+    spawned = []
+    monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
+    args = _args(fan_on=45.0, fan_pin=19, fan_type="3pin", fan_min_duty=30)
+    daemon._ensure_fan(args)
+    assert len(spawned) == 1
+    cmd = spawned[0]
+    assert "--fan-on" in cmd
+    assert "45.0" in cmd
+    assert "--fan-type" in cmd
+    assert "3pin" in cmd
+
+
+def test_ensure_fan_noop_when_already_running(tmp_path, monkeypatch):
+    import os
+    pid_file = tmp_path / "fan.pid"
+    pid_file.write_text(str(os.getpid()))
+    monkeypatch.setattr(daemon, "_FAN_PID_FILE", pid_file)
+    spawned = []
+    monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
+    daemon._ensure_fan(_args(fan_on=45.0))
+    assert spawned == []
+
+
+def test_ensure_fan_4pin_passes_correct_type(tmp_path, monkeypatch):
+    monkeypatch.setattr(daemon, "_FAN_PID_FILE", tmp_path / "fan.pid")
+    spawned = []
+    monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
+    args = _args(fan_on=45.0, fan_pin=13, fan_type="4pin", fan_min_duty=20)
+    daemon._ensure_fan(args)
+    cmd = spawned[0]
+    assert "4pin" in cmd
+    assert "13" in cmd
+    assert "20" in cmd
