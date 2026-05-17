@@ -115,7 +115,7 @@ cmd_showlogs() {
 }
 
 _all_monitors_disabled() {
-    for m in boot power cpu temp net gpio; do
+    for m in boot power cpu temp net gpio disk conn wifi; do
         [[ "$(cfg_get monitors "${m}_every" 1)" == "0" ]] || return 1
     done
     return 0
@@ -125,8 +125,8 @@ cmd_enable_disable() {
     local action=$1 monitor=$2
     need_root "$action $monitor"
     case $monitor in
-        boot|power|cpu|temp|net|gpio) ;;
-        *) die "unknown monitor '$monitor' — choose from: boot power cpu temp net gpio";;
+        boot|power|cpu|temp|net|gpio|disk|conn|wifi) ;;
+        *) die "unknown monitor '$monitor' — choose from: boot power cpu temp net gpio disk conn wifi";;
     esac
     local val; [[ $action == enable ]] && val=1 || val=0
     cfg_set monitors "${monitor}_every" "$val"
@@ -161,6 +161,15 @@ cmd_set() {
         temp-every)       cfg_set monitors temp_every    "$value";;
         net-every)        cfg_set monitors net_every     "$value";;
         gpio-every)       cfg_set monitors gpio_every    "$value";;
+        disk-every)       cfg_set monitors disk_every    "$value";;
+        conn-every)       cfg_set monitors conn_every    "$value";;
+        wifi-every)       cfg_set monitors wifi_every    "$value";;
+        disk-warn)        cfg_set alerts   disk_warn     "$value";;
+        conn-host)        cfg_set network  conn_host     "$value";;
+        fan-on)           cfg_set fan      fan_on        "$value";;
+        fan-pin)          cfg_set fan      fan_pin       "$value";;
+        fan-type)         cfg_set fan      fan_type      "$value";;
+        fan-min-duty)     cfg_set fan      fan_min_duty  "$value";;
         *) die "unknown parameter '$param' — run 'porcupine help' for supported params";;
     esac
     echo "$param = $value"
@@ -177,8 +186,8 @@ Commands:
   status                   Show service state and current configuration
   test                     Run hardware tests (interactive)
 
-  enable  <monitor>        Enable a monitor  (boot|power|cpu|temp|net|gpio)
-  disable <monitor>        Disable a monitor (boot|power|cpu|temp|net|gpio)
+  enable  <monitor>        Enable a monitor  (boot|power|cpu|temp|net|gpio|disk|conn|wifi)
+  disable <monitor>        Disable a monitor (boot|power|cpu|temp|net|gpio|disk|conn|wifi)
 
   set refresh <seconds>    Time between display pages (default 5)
   set only-alert <true|false>  LCD off until a threshold breaches (default false)
@@ -191,12 +200,21 @@ Commands:
   set button-pin <n>       Button GPIO pin (BCM)
   set buzzer-pin <n>       Buzzer GPIO pin (BCM)
 
-  set boot-every  <n>      Show boot screen every Nth cycle  (default 1)
-  set power-every <n>      Show power screen every Nth cycle
-  set cpu-every   <n>      Show cpu screen every Nth cycle
-  set temp-every  <n>      Show temp screen every Nth cycle
-  set net-every   <n>      Show net screen every Nth cycle
-  set gpio-every  <n>      Show gpio screen every Nth cycle
+  set boot-every  <n>      Show boot screen every Nth cycle  (default 10)
+  set power-every <n>      Show power screen every Nth cycle (default 5)
+  set cpu-every   <n>      Show cpu screen every Nth cycle   (default 5)
+  set temp-every  <n>      Show temp screen every Nth cycle  (default 1)
+  set net-every   <n>      Show net screen every Nth cycle   (default 10)
+  set gpio-every  <n>      Show gpio screen every Nth cycle  (default 2)
+  set disk-every  <n>      Show disk screen every Nth cycle  (default 30)
+  set conn-every  <n>      Show connectivity screen every Nth cycle (default 12)
+  set wifi-every  <n>      Show wifi screen every Nth cycle  (default 60)
+  set disk-warn <%>        Disk usage warning threshold      (default 85)
+  set conn-host <host>     Host to probe for connectivity    (default 8.8.8.8)
+  set fan-on <°C>          Fan start temperature; 0 disables (default 0)
+  set fan-pin <n>          Fan GPIO pin (BCM)                (default 19)
+  set fan-type <3pin|4pin> Fan PWM frequency                 (default 3pin)
+  set fan-min-duty <%>     Fan minimum duty cycle            (default 30)
 
   showlogs error           Show warnings and errors from the service journal
   showlogs all             Show full service journal

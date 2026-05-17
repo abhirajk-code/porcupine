@@ -21,21 +21,31 @@ porcupine/
 ├── __init__.py
 ├── main.py              # entry point, parses flags, starts daemon loop
 ├── config.py            # flag/config management
+├── fan_control.py       # standalone fan controller (spawned by daemon)
 ├── monitors/
 │   ├── __init__.py
-│   ├── power.py         # power-up count & uptime tracking
+│   ├── boot.py          # boot count & uptime tracking
+│   ├── power.py         # INA219 battery & power source
 │   ├── cpu_mem.py       # CPU and memory usage
-│   ├── temperature.py   # CPU/GPU temperature
-│   └── network.py       # network rx/tx usage
+│   ├── temperature.py   # CPU temperature
+│   ├── network.py       # network rx/tx usage
+│   ├── gpio_pins.py     # 40-pin GPIO header state
+│   ├── disk.py          # disk space usage
+│   ├── connectivity.py  # internet reachability (ICMP)
+│   └── wifi.py          # WiFi signal & connection state
 ├── interfaces/
 │   ├── __init__.py
-│   ├── lcd.py           # LCD driver & display logic
-│   ├── button.py        # GPIO button input handler
-│   └── buzzer.py        # buzzer alert driver
+│   ├── lcd.py               # LCD driver & display logic
+│   ├── button.py            # GPIO button input handler
+│   ├── button_controller.py # button FSM (short/long press, countdown)
+│   └── buzzer.py            # buzzer alert driver
 ├── daemon.py            # main event loop, wires monitors to interfaces
 └── install/
     ├── porcupine.service # systemd unit file
-    └── setup.sh          # install script
+    ├── install.sh        # install script (config, venv, service)
+    ├── porcupine         # management CLI (enable/disable/set/status)
+    ├── test.sh           # hardware test runner
+    └── test_hardware.py  # interactive hardware tests
 ```
 
 ---
@@ -44,14 +54,17 @@ porcupine/
 
 Each monitor is a module with a `read() -> dict` function that returns the latest metric values.
 
-| Monitor | `every` flag | Metrics Collected |
-|---|---|---|
-| `boot.py` | `--boot-every` | boot count, uptime |
-| `power.py` | `--power-every` | power source, battery % |
-| `cpu_mem.py` | `--cpu-every` | CPU % per core, RAM % used |
-| `temperature.py` | `--temp-every` | CPU temp (°C) |
-| `network.py` | `--net-every` | rx/tx bytes/s, active interface |
-| `gpio_pins.py` | `--gpio-every` | BCM pin states (two screens) |
+| Monitor | `every` flag | Default | Metrics Collected |
+|---|---|---|---|
+| `boot.py` | `--boot-every` | 10 | boot count, uptime |
+| `power.py` | `--power-every` | 5 | power source, battery % |
+| `cpu_mem.py` | `--cpu-every` | 5 | CPU % per core, RAM % used |
+| `temperature.py` | `--temp-every` | 1 | CPU temp (°C), throttle state |
+| `network.py` | `--net-every` | 10 | rx/tx bytes/s, active interface |
+| `gpio_pins.py` | `--gpio-every` | 2 | BCM pin states (two screens) |
+| `disk.py` | `--disk-every` | 30 | disk used/total GB, usage % |
+| `connectivity.py` | `--conn-every` | 12 | internet reachability, latency ms |
+| `wifi.py` | `--wifi-every` | 60 | WiFi SSID, signal dBm, IP |
 
 Each monitor has an `every` value: 0 = disabled, 1 = every cycle, N = every Nth cycle.
 At runtime, `effective_every` can drop to 1 when a threshold is breached, increasing
@@ -116,13 +129,16 @@ A `porcupine.conf` file in `/etc/porcupine/` can hold persistent defaults so fla
 ```bash
 git clone git@github.com:abhirajk-code/porcupine.git
 cd porcupine
-sudo bash install/setup.sh
+sudo bash install/install.sh   # step 1: config, venv, service template
+sudo porcupine test            # step 2: verify hardware
+sudo porcupine start           # step 3: enable and start service
 ```
 
-`setup.sh` will:
-1. Install Python dependencies (`pip install -r requirements.txt`).
-2. Copy `porcupine.service` to `/etc/systemd/system/`.
-3. Enable and start the service (`systemctl enable --now porcupine`).
+`install.sh` will:
+1. Prompt for configuration (or use `--non-interactive` for all defaults).
+2. Create a virtual environment at `/opt/porcupine/venv` and install the package.
+3. Install the management CLI at `/usr/local/bin/porcupine`.
+4. Install the systemd service template (does **not** enable it — run `porcupine start` when ready).
 
 ---
 

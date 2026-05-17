@@ -40,12 +40,15 @@ After installation the `porcupine` command is available system-wide.
 Each monitor has a cycle frequency that controls how often it appears in the display rotation.
 
 ```bash
-sudo porcupine set boot-every  <n>   # 0 = disabled, 1 = every cycle (default), N = every Nth cycle
+sudo porcupine set boot-every  <n>   # 0 = disabled, N = every Nth rotation
 sudo porcupine set power-every <n>
 sudo porcupine set cpu-every   <n>
 sudo porcupine set temp-every  <n>
 sudo porcupine set net-every   <n>
 sudo porcupine set gpio-every  <n>
+sudo porcupine set disk-every  <n>
+sudo porcupine set conn-every  <n>
+sudo porcupine set wifi-every  <n>
 ```
 
 The `enable` / `disable` shortcuts set the frequency to `1` or `0`:
@@ -67,6 +70,12 @@ All `set` commands require `sudo` and restart the service automatically if it is
 | `sudo porcupine set cpu-warn <%>` | CPU usage alert threshold | `90.0` |
 | `sudo porcupine set mem-warn <%>` | Memory usage alert threshold | `90.0` |
 | `sudo porcupine set bat-warn <%>` | Battery level alert threshold | `40.0` |
+| `sudo porcupine set disk-warn <%>` | Disk usage alert threshold | `85.0` |
+| `sudo porcupine set conn-host <host>` | Host to probe for internet connectivity | `8.8.8.8` |
+| `sudo porcupine set fan-on <°C>` | Fan start temperature; `0` disables fan control | `0` |
+| `sudo porcupine set fan-pin <n>` | Fan GPIO pin (BCM numbering) | `19` |
+| `sudo porcupine set fan-type <3pin\|4pin>` | Fan PWM frequency (3pin=1 kHz, 4pin=25 kHz) | `3pin` |
+| `sudo porcupine set fan-min-duty <%>` | Minimum fan duty cycle when running | `30` |
 | `sudo porcupine set lcd-addr <hex>` | LCD I2C address | `0x27` |
 | `sudo porcupine set ina219-addr <hex>` | INA219 battery monitor I2C address | `0x41` |
 | `sudo porcupine set button-pin <n>` | Button GPIO pin (BCM numbering) | `4` |
@@ -128,14 +137,14 @@ Alerts only fire for monitors that are enabled. Disabling a monitor also silence
 
 ## LCD alert indicator
 
-When any threshold is currently exceeded, `!` is placed at column 15 (the last character, 0-indexed) of the first line on every screen — a persistent visual indicator that something needs attention regardless of which screen is currently showing.
+When any threshold is currently exceeded, a warning symbol (CGRAM slot 5) is placed at column 15 (the last character, 0-indexed) of the first line on every screen — a persistent visual indicator that something needs attention regardless of which screen is currently showing.
 
 ```
- CPU   Mem      !    ← alert active on any monitor
+ CPU   Mem      ⚠    ← alert active on any monitor
  WARN   45%
 ```
 
-Once all values drop below their thresholds the `!` disappears automatically.
+Once all values drop below their thresholds the warning symbol disappears automatically.
 
 ---
 
