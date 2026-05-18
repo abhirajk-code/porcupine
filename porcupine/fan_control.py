@@ -161,7 +161,7 @@ def run(args: argparse.Namespace) -> None:
             _PID_FILE.unlink(missing_ok=True)
 
 
-def parse_args(argv=None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="porcupine-fan", description="Porcupine fan controller")
     p.add_argument("--fan-pin",  type=int,   default=19,   metavar="PIN")
     p.add_argument("--fan-type", choices=["3pin", "4pin"], default="3pin")
@@ -172,7 +172,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def main(argv=None) -> None:
+def main(argv: list[str] | None = None) -> None:
     run(parse_args(argv))
 
 

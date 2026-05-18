@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
 
@@ -81,16 +82,18 @@ def _is_valid(value: object) -> bool:
 # Monitor objects — own reading, formatting, breach detection, and beep pattern
 # ---------------------------------------------------------------------------
 
-class _Monitor:
+class _Monitor(ABC):
     """Per-feature monitor with a uniform interface for the orchestrator."""
     flag: str
-    every: int = 0  # set by _make_monitors; 0 = disabled
 
-    def read(self) -> dict:
-        raise NotImplementedError
+    def __init__(self, every: int = 0) -> None:
+        self.every = every
 
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        raise NotImplementedError
+    @abstractmethod
+    def read(self) -> dict: ...
+
+    @abstractmethod
+    def format_screens(self, data: dict) -> list[tuple[str, str]]: ...
 
     def has_breach(self, data: dict) -> bool:
         return False
@@ -101,6 +104,9 @@ class _Monitor:
 
 class _BootMonitor(_Monitor):
     flag = "boot"
+
+    def __init__(self, every: int = 0) -> None:
+        super().__init__(every)
 
     def read(self) -> dict:
         return boot.read()
@@ -113,7 +119,8 @@ class _BootMonitor(_Monitor):
 class _PowerMonitor(_Monitor):
     flag = "power"
 
-    def __init__(self, bat_warn: float = 40.0):
+    def __init__(self, bat_warn: float = 40.0, every: int = 0) -> None:
+        super().__init__(every)
         self._bat_warn = bat_warn
 
     def read(self) -> dict:
@@ -144,7 +151,8 @@ class _PowerMonitor(_Monitor):
 class _CpuMemMonitor(_Monitor):
     flag = "cpu"
 
-    def __init__(self, cpu_warn: float = 90.0, mem_warn: float = 90.0):
+    def __init__(self, cpu_warn: float = 90.0, mem_warn: float = 90.0, every: int = 0) -> None:
+        super().__init__(every)
         self._cpu_warn = cpu_warn
         self._mem_warn = mem_warn
 
@@ -173,7 +181,8 @@ class _CpuMemMonitor(_Monitor):
 class _TempMonitor(_Monitor):
     flag = "temp"
 
-    def __init__(self, temp_warn: float = 80.0):
+    def __init__(self, temp_warn: float = 80.0, every: int = 0) -> None:
+        super().__init__(every)
         self._temp_warn = temp_warn
 
     def read(self) -> dict:
@@ -210,6 +219,9 @@ class _TempMonitor(_Monitor):
 class _NetMonitor(_Monitor):
     flag = "net"
 
+    def __init__(self, every: int = 0) -> None:
+        super().__init__(every)
+
     def read(self) -> dict:
         return network.read()
 
@@ -223,7 +235,8 @@ class _NetMonitor(_Monitor):
 class _GpioMonitor(_Monitor):
     flag = "gpio"
 
-    def __init__(self, page: int) -> None:
+    def __init__(self, page: int, every: int = 0) -> None:
+        super().__init__(every)
         self._page = page  # 1 = pins 1-20, 2 = pins 21-40
 
     def read(self) -> dict:
@@ -246,7 +259,8 @@ class _GpioMonitor(_Monitor):
 class _DiskMonitor(_Monitor):
     flag = "disk"
 
-    def __init__(self, disk_warn: float = 85.0):
+    def __init__(self, disk_warn: float = 85.0, every: int = 0) -> None:
+        super().__init__(every)
         self._disk_warn = disk_warn
 
     def read(self) -> dict:
@@ -274,6 +288,9 @@ class _DiskMonitor(_Monitor):
 
 class _WifiMonitor(_Monitor):
     flag = "wifi"
+
+    def __init__(self, every: int = 0) -> None:
+        super().__init__(every)
 
     def read(self) -> dict:
         return wifi.read()
@@ -306,7 +323,8 @@ class _WifiMonitor(_Monitor):
 class _ConnectivityMonitor(_Monitor):
     flag = "conn"
 
-    def __init__(self, host: str = "8.8.8.8"):
+    def __init__(self, host: str = "8.8.8.8", every: int = 0) -> None:
+        super().__init__(every)
         self._host = host
 
     def read(self) -> dict:
@@ -332,24 +350,22 @@ class _ConnectivityMonitor(_Monitor):
 
 def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
     """Create and return enabled Monitor instances, in display order."""
+    def _e(flag: str) -> int:
+        return getattr(args, f"{flag}_every", 0)
+
     candidates: list[_Monitor] = [
-        _BootMonitor(),
-        _PowerMonitor(bat_warn=args.bat_warn),
-        _CpuMemMonitor(cpu_warn=args.cpu_warn, mem_warn=args.mem_warn),
-        _TempMonitor(temp_warn=args.temp_warn),
-        _NetMonitor(),
-        _GpioMonitor(page=1),
-        _GpioMonitor(page=2),
-        _DiskMonitor(disk_warn=args.disk_warn),
-        _ConnectivityMonitor(host=args.conn_host),
-        _WifiMonitor(),
+        _BootMonitor(every=_e("boot")),
+        _PowerMonitor(bat_warn=args.bat_warn, every=_e("power")),
+        _CpuMemMonitor(cpu_warn=args.cpu_warn, mem_warn=args.mem_warn, every=_e("cpu")),
+        _TempMonitor(temp_warn=args.temp_warn, every=_e("temp")),
+        _NetMonitor(every=_e("net")),
+        _GpioMonitor(page=1, every=_e("gpio")),
+        _GpioMonitor(page=2, every=_e("gpio")),
+        _DiskMonitor(disk_warn=args.disk_warn, every=_e("disk")),
+        _ConnectivityMonitor(host=args.conn_host, every=_e("conn")),
+        _WifiMonitor(every=_e("wifi")),
     ]
-    monitors = []
-    for m in candidates:
-        m.every = getattr(args, f"{m.flag}_every", 0)
-        if m.every > 0:
-            monitors.append(m)
-    return monitors
+    return [m for m in candidates if m.every > 0]
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +375,7 @@ def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
 def _read_all(
     monitors: list[_Monitor],
     r_cycle: int = 0,
-    effective_every: "dict | None" = None,
+    effective_every: dict[str, int] | None = None,
 ) -> dict:
     """Call read() on every monitor whose cycle is due and merge results.
 
@@ -380,7 +396,7 @@ def _read_all(
 def _apply_escalation(
     monitors: list[_Monitor],
     breached: set[str],
-    effective_every: dict,
+    effective_every: dict[str, int],
 ) -> None:
     """Escalate to every=1 for alertable monitors with active breaches; restore when clear."""
     for m in monitors:
@@ -408,7 +424,7 @@ def _with_alert_indicator(
 
 def _build_screens_tagged(
     monitors: list[_Monitor], data: dict, d_cycle: int = 0,
-    breached: "set[str] | None" = None,
+    breached: set[str] | None = None,
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """Like _build_screens but also returns a parallel list of monitor flag names.
 
@@ -459,15 +475,15 @@ class _Notifier:
         controller: ButtonController,
         only_alert: bool,
         alert_log: str | None = None,
-    ):
-        self._lcd          = lcd
-        self._buzzer       = buzzer
-        self._controller   = controller
-        self._only_alert   = only_alert
-        self._alert_log    = alert_log
-        self._alert_lcd_on = False
-        self._lcd_wrapped  = threading.Event()
-        self._lock         = threading.Lock()
+    ) -> None:
+        self._lcd: LCD                  = lcd
+        self._buzzer: Buzzer            = buzzer
+        self._controller: ButtonController = controller
+        self._only_alert: bool          = only_alert
+        self._alert_log: str | None     = alert_log
+        self._alert_lcd_on: bool        = False
+        self._lcd_wrapped: threading.Event = threading.Event()
+        self._lock: threading.Lock      = threading.Lock()
         # State shared with the LCD thread via on_screen_advance
         self._breached: set[str]               = set()
         self._tags: list[str]                  = []
