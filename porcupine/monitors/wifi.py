@@ -20,8 +20,8 @@ _SSID_TTL = 60.0
 # SIOCGIWESSID ioctl reads SSID in-process, avoiding a subprocess spawn.
 # ifreq layout: 16-byte ifr_name + iw_point (void *ptr, __u16 len, __u16 flags).
 # Pointer width differs on 32-bit vs 64-bit ARM; struct iwreq is always 32 bytes.
-_SIOCGIWESSID = 0x8B1B
-_PTR_FMT = "Q" if struct.calcsize("P") == 8 else "I"
+_SIOCGIWESSID = 0x8B1B  # Linux wireless ioctl to query ESSID (from linux/wireless.h)
+_PTR_FMT = "Q" if struct.calcsize("P") == 8 else "I"  # 64-bit pointer → Q, 32-bit → I
 _IFREQ_HDR_FMT = f"16s{_PTR_FMT}HH"
 _IFREQ_PAD = max(0, 32 - struct.calcsize(_IFREQ_HDR_FMT))
 

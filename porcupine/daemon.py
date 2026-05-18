@@ -573,7 +573,8 @@ class _Notifier:
         """Refresh screens and beep any monitors that newly crossed their threshold."""
         screens, tags = _build_screens_tagged(monitors, data, d_cycle=d_cycle, breached=new_breached)
         patterns = {m.flag: m.beep_pattern() for m in monitors if m.flag in new_breached}
-        if self._only_alert and new_breached:
+        alert_mode_active = self._only_alert and bool(new_breached)
+        if alert_mode_active:
             display_screens, display_tags = _filter_alert_screens(screens, tags, new_breached)
         else:
             display_screens, display_tags = screens, tags
@@ -586,7 +587,7 @@ class _Notifier:
             self._beep_patterns = patterns
 
         if self._only_alert:
-            if new_breached:
+            if alert_mode_active:
                 self._lcd.update_screens(
                     _with_alert_indicator(display_screens, True),
                     reset_position=wrapped,
@@ -719,18 +720,18 @@ def _run_loop(
     last_data: dict,
 ) -> None:
     """Main polling loop — read monitors, update display, manage alerts."""
-    r_cycle = 0
-    d_cycle = 0
+    read_cycle    = 0
+    display_cycle = 0
     try:
         while True:
             time.sleep(args.refresh)
-            r_cycle += 1
+            read_cycle += 1
 
             wrapped = notifier.consume_wrap()
             if wrapped:
-                d_cycle += 1
+                display_cycle += 1
 
-            data = _read_all(monitors, r_cycle=r_cycle)
+            data = _read_all(monitors, r_cycle=read_cycle)
             if not data and not wrapped:
                 continue
             if data:
@@ -738,7 +739,7 @@ def _run_loop(
 
             breached = {m.flag for m in monitors if m.has_breach(last_data)}
             _apply_escalation(monitors, breached)
-            notifier.update(monitors, last_data, breached, d_cycle, wrapped=wrapped)
+            notifier.update(monitors, last_data, breached, display_cycle, wrapped=wrapped)
 
             if args.fan_enabled and last_data.get("cpu_temp_c", 0.0) >= args.temp_warn:
                 _ensure_fan(args)

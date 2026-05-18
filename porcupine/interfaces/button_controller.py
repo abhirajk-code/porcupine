@@ -1,4 +1,5 @@
 """Button FSM — maps short/long press sequences to LCD and system actions."""
+import enum
 import subprocess
 import threading
 import time
@@ -6,6 +7,13 @@ from typing import Callable
 
 from .button import Button
 from .lcd import LCD
+
+
+class _State(enum.Enum):
+    IDLE              = "idle"
+    AFTER_FIRST       = "after_first"
+    AFTER_SECOND_DOWN = "after_second_start"
+    COUNTING          = "counting"
 
 
 class ButtonController:
@@ -31,8 +39,7 @@ class ButtonController:
         self._lcd    = lcd
         self._lcd_on = True
         self._frozen = False
-        # idle | after_first | after_second_start | counting
-        self._state  = "idle"
+        self._state  = _State.IDLE
         self._window_timer: threading.Timer | None = None
         self._cancel = threading.Event()
         self._on_long_idle = on_long_idle
@@ -48,12 +55,12 @@ class ButtonController:
     def _on_press_down(self) -> None:
         # Cancel the window as soon as a second press begins so the full
         # long-press duration (2 s) doesn't eat into the follow-up window.
-        if self._state == "after_first":
+        if self._state == _State.AFTER_FIRST:
             self._cancel_window()
-            self._state = "after_second_start"
+            self._state = _State.AFTER_SECOND_DOWN
 
     def _on_short(self) -> None:
-        if self._state == "idle":
+        if self._state == _State.IDLE:
             if not self._lcd_on:
                 self._lcd_on = True
                 self._frozen = False
@@ -63,21 +70,21 @@ class ButtonController:
                 if not was_frozen:
                     self._frozen = True
                     self._lcd.freeze()
-                self._state = "after_first"
+                self._state = _State.AFTER_FIRST
                 self._window_timer = threading.Timer(
                     self._WINDOW_S,
                     lambda: self._window_expired(was_frozen),
                 )
                 self._window_timer.start()
-        elif self._state == "after_second_start":
+        elif self._state == _State.AFTER_SECOND_DOWN:
             self._begin_countdown("reboot")
-        elif self._state == "counting":
+        elif self._state == _State.COUNTING:
             self._cancel.set()
 
     def _on_long(self) -> None:
-        if self._state == "after_second_start":
+        if self._state == _State.AFTER_SECOND_DOWN:
             self._begin_countdown("shutdown")
-        elif self._state == "idle" and self._on_long_idle:
+        elif self._state == _State.IDLE and self._on_long_idle:
             self._on_long_idle()
 
     def set_lcd_on(self, state: bool) -> None:
@@ -98,7 +105,7 @@ class ButtonController:
             self._lcd_on = False
             self._lcd.pause()
         # Otherwise freeze was set in _on_short — nothing more to do here
-        self._state = "idle"
+        self._state = _State.IDLE
 
     def _cancel_window(self) -> None:
         if self._window_timer is not None:
@@ -106,7 +113,7 @@ class ButtonController:
             self._window_timer = None
 
     def _begin_countdown(self, action: str) -> None:
-        self._state = "counting"
+        self._state = _State.COUNTING
         if self._frozen:
             self._frozen = False
             self._lcd.unfreeze()
@@ -126,7 +133,7 @@ class ButtonController:
                 self._lcd.update_menu("Cancelled", "")
                 time.sleep(1.5)
                 self._lcd.exit_menu()
-                self._state = "idle"
+                self._state = _State.IDLE
                 return
             self._lcd.update_menu(line1, f"{remaining}s  Press:cancel")
         if action == "reboot":

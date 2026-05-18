@@ -2,7 +2,7 @@
 from unittest.mock import MagicMock, patch
 
 
-from porcupine.interfaces.button_controller import ButtonController
+from porcupine.interfaces.button_controller import ButtonController, _State
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ def test_window_expired_first_time_keeps_freeze():
     ctrl._window_expired(was_frozen=False)
     lcd.freeze.assert_not_called()
     lcd.pause.assert_not_called()
-    assert ctrl._state == "idle"
+    assert ctrl._state == _State.IDLE
     assert ctrl._frozen is True   # stays frozen
     assert ctrl._lcd_on is True
 
@@ -109,7 +109,7 @@ def test_window_expired_second_time_pauses_and_unfreezes():
     ctrl._window_expired(was_frozen=True)
     lcd.unfreeze.assert_called_once()
     lcd.pause.assert_called_once()
-    assert ctrl._state == "idle"
+    assert ctrl._state == _State.IDLE
     assert ctrl._frozen is False
     assert ctrl._lcd_on is False
 
@@ -121,7 +121,7 @@ def test_window_expired_second_time_pauses_and_unfreezes():
 def test_short_press_when_lcd_off_resumes_lcd():
     ctrl, cbs, lcd = _make_controller()
     ctrl._lcd_on = False
-    ctrl._state  = "idle"
+    ctrl._state  = _State.IDLE
     _short(cbs)
     lcd.resume.assert_called_once()
     assert ctrl._lcd_on is True
@@ -130,7 +130,7 @@ def test_short_press_when_lcd_off_resumes_lcd():
 def test_short_press_when_lcd_off_does_not_start_window():
     ctrl, cbs, lcd = _make_controller()
     ctrl._lcd_on = False
-    ctrl._state  = "idle"
+    ctrl._state  = _State.IDLE
     with patch("porcupine.interfaces.button_controller.threading.Timer") as MockTimer:
         _short(cbs)
     MockTimer.assert_not_called()
@@ -175,7 +175,7 @@ def test_short_long_starts_shutdown_countdown():
 def test_countdown_resumes_lcd_when_off():
     ctrl, cbs, lcd = _make_controller()
     ctrl._lcd_on = False
-    ctrl._state  = "after_second_start"
+    ctrl._state  = _State.AFTER_SECOND_DOWN
     with patch("porcupine.interfaces.button_controller.threading.Thread") as MockThread:
         MockThread.return_value = MagicMock()
         _short(cbs)           # second short → reboot while LCD is off
@@ -189,7 +189,7 @@ def test_countdown_resumes_lcd_when_off():
 
 def test_short_press_during_countdown_cancels():
     ctrl, cbs, lcd = _make_controller()
-    ctrl._state = "counting"
+    ctrl._state = _State.COUNTING
     ctrl._cancel.clear()
     _short(cbs)
     assert ctrl._cancel.is_set()
@@ -203,10 +203,10 @@ def test_second_press_down_cancels_window_timer():
     ctrl, cbs, lcd = _make_controller()
     mock_timer = MagicMock()
     ctrl._window_timer = mock_timer
-    ctrl._state = "after_first"
+    ctrl._state = _State.AFTER_FIRST
     cbs["press_start"]()   # second press begins
     mock_timer.cancel.assert_called_once()
-    assert ctrl._state == "after_second_start"
+    assert ctrl._state == _State.AFTER_SECOND_DOWN
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +244,7 @@ def test_set_lcd_on_no_op_when_already_matches():
 
 def test_set_lcd_on_does_not_change_fsm_state():
     ctrl, cbs, lcd = _make_controller()
-    ctrl._state = "after_first"
+    ctrl._state = _State.AFTER_FIRST
     ctrl._lcd_on = False
     ctrl.set_lcd_on(True)
-    assert ctrl._state == "after_first"   # FSM untouched
+    assert ctrl._state == _State.AFTER_FIRST   # FSM untouched

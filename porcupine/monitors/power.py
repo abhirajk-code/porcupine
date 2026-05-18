@@ -37,8 +37,13 @@ def init(addr: int = 0x41) -> None:
     try:
         _bus = _smbus.SMBus(1)
         _write(_REG_CALIBRATION, _CAL_VALUE)
-        # 16V range | gain /2 (80 mV) | 12-bit 32-sample bus & shunt | continuous
-        config = (0x00 << 13) | (0x01 << 11) | (0x0D << 7) | (0x0D << 3) | 0x07
+        config = (
+            (0x00 << 13) |  # bus voltage range: 16 V
+            (0x01 << 11) |  # gain: ±80 mV shunt range
+            (0x0D <<  7) |  # bus ADC: 128-sample average
+            (0x0D <<  3) |  # shunt ADC: 128-sample average
+            0x07            # mode: shunt + bus, continuous
+        )
         _write(_REG_CONFIG, config)
     except Exception:
         _bus = None
