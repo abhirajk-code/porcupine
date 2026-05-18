@@ -88,6 +88,12 @@ class _Monitor(ABC):
 
     def __init__(self, every: int = 0) -> None:
         self.every = every
+        self._escalated: bool = False
+
+    @property
+    def effective_every(self) -> int:
+        """Read cadence: 1 when a breach is active, configured every otherwise."""
+        return 1 if self._escalated else self.every
 
     @abstractmethod
     def read(self) -> dict: ...
@@ -372,19 +378,14 @@ def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
 # Pipeline helpers
 # ---------------------------------------------------------------------------
 
-def _read_all(
-    monitors: list[_Monitor],
-    r_cycle: int = 0,
-    effective_every: dict[str, int] | None = None,
-) -> dict:
+def _read_all(monitors: list[_Monitor], r_cycle: int = 0) -> dict:
     """Call read() on every monitor whose cycle is due and merge results.
 
     At r_cycle=0 all monitors are read regardless of their every value.
     """
     merged: dict = {}
     for m in monitors:
-        every = (effective_every or {}).get(m.flag, m.every)
-        if r_cycle % every != 0:
+        if r_cycle % m.effective_every != 0:
             continue
         try:
             merged.update(m.read())
@@ -393,16 +394,12 @@ def _read_all(
     return merged
 
 
-def _apply_escalation(
-    monitors: list[_Monitor],
-    breached: set[str],
-    effective_every: dict[str, int],
-) -> None:
+def _apply_escalation(monitors: list[_Monitor], breached: set[str]) -> None:
     """Escalate to every=1 for alertable monitors with active breaches; restore when clear."""
     for m in monitors:
         if m.beep_pattern() is None:
             continue
-        effective_every[m.flag] = 1 if m.flag in breached else m.every
+        m._escalated = m.flag in breached
 
 
 def _build_screens(
@@ -434,7 +431,7 @@ def _build_screens_tagged(
     screens: list[tuple[str, str]] = []
     tags: list[str] = []
     for m in monitors:
-        if d_cycle % m.every != 0 and m.flag not in (breached or set()):
+        if d_cycle % m.effective_every != 0 and m.flag not in (breached or set()):
             continue
         result = m.format_screens(data)
         screens.extend(result)
@@ -501,6 +498,21 @@ class _Notifier:
         except Exception:
             logging.warning("failed to write alert log", exc_info=True)
 
+    def _log_transitions(
+        self,
+        old_breached: set[str],
+        new_breached: set[str],
+        patterns: dict[str, dict | None],
+    ) -> None:
+        """Beep and log monitors that newly breached; log those that cleared."""
+        for flag in sorted(new_breached - old_breached):
+            self._log(flag, "BREACH")
+            pattern = patterns.get(flag)
+            if pattern:
+                self._buzzer.beep_async(**pattern)
+        for flag in sorted(old_breached - new_breached):
+            self._log(flag, "CLEAR")
+
     def consume_wrap(self) -> bool:
         """Return True (and reset) if the LCD completed a full rotation since last call."""
         if self._lcd_wrapped.is_set():
@@ -547,11 +559,7 @@ class _Notifier:
         )
         if self._only_alert and not breached:
             self._controller.set_lcd_on(False)
-        for flag in sorted(breached):
-            self._log(flag, "BREACH")
-            pattern = patterns.get(flag)
-            if pattern:
-                self._buzzer.beep_async(**pattern)
+        self._log_transitions(set(), breached, patterns)
 
     def update(
         self,
@@ -570,14 +578,7 @@ class _Notifier:
         else:
             display_screens, display_tags = screens, tags
 
-        # Beep and log monitors that just crossed threshold (before updating self._breached)
-        for flag in sorted(new_breached - self._breached):
-            self._log(flag, "BREACH")
-            pattern = patterns.get(flag)
-            if pattern:
-                self._buzzer.beep_async(**pattern)
-        for flag in sorted(self._breached - new_breached):
-            self._log(flag, "CLEAR")
+        self._log_transitions(self._breached, new_breached, patterns)
 
         with self._lock:
             self._breached      = new_breached
@@ -688,6 +689,64 @@ def _ensure_fan(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Entry-point helpers
+# ---------------------------------------------------------------------------
+
+def _on_sigterm(signum: int, frame: object) -> None:
+    raise KeyboardInterrupt
+
+
+def _toggle_only_alert(args: argparse.Namespace, lcd: LCD) -> None:
+    """Toggle the only_alert config flag and restart the service to apply it."""
+    cp = configparser.ConfigParser()
+    cp.read(args.config)
+    current = cp.getboolean("display", "only_alert", fallback=False)
+    if not cp.has_section("display"):
+        cp.add_section("display")
+    cp.set("display", "only_alert", "false" if current else "true")
+    with open(args.config, "w") as f:
+        cp.write(f)
+    label = "OFF" if current else "ON"
+    lcd.enter_menu("Only Alert", label)
+    time.sleep(1.5)
+    subprocess.run(["systemctl", "restart", "porcupine"], check=False)
+
+
+def _run_loop(
+    monitors: list[_Monitor],
+    notifier: _Notifier,
+    args: argparse.Namespace,
+    last_data: dict,
+) -> None:
+    """Main polling loop — read monitors, update display, manage alerts."""
+    r_cycle = 0
+    d_cycle = 0
+    try:
+        while True:
+            time.sleep(args.refresh)
+            r_cycle += 1
+
+            wrapped = notifier.consume_wrap()
+            if wrapped:
+                d_cycle += 1
+
+            data = _read_all(monitors, r_cycle=r_cycle)
+            if not data and not wrapped:
+                continue
+            if data:
+                last_data.update(data)
+
+            breached = {m.flag for m in monitors if m.has_breach(last_data)}
+            _apply_escalation(monitors, breached)
+            notifier.update(monitors, last_data, breached, d_cycle, wrapped=wrapped)
+
+            if args.fan_enabled and last_data.get("cpu_temp_c", 0.0) >= args.temp_warn:
+                _ensure_fan(args)
+    except KeyboardInterrupt:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -698,9 +757,6 @@ def run(args: argparse.Namespace) -> None:
             "No monitors enabled — exiting. Re-enable with: sudo porcupine enable <monitor>"
         )
         return
-
-    def _on_sigterm(signum, frame):
-        raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, _on_sigterm)
 
@@ -714,23 +770,7 @@ def run(args: argparse.Namespace) -> None:
 
     _wifi_startup(lcd)
 
-    effective_every: dict = {m.flag: m.every for m in monitors}
-
-    def _toggle_only_alert() -> None:
-        cp = configparser.ConfigParser()
-        cp.read(args.config)
-        current = cp.getboolean("display", "only_alert", fallback=False)
-        if not cp.has_section("display"):
-            cp.add_section("display")
-        cp.set("display", "only_alert", "false" if current else "true")
-        with open(args.config, "w") as f:
-            cp.write(f)
-        label = "OFF" if current else "ON"
-        lcd.enter_menu("Only Alert", label)
-        time.sleep(1.5)
-        subprocess.run(["systemctl", "restart", "porcupine"], check=False)
-
-    controller = ButtonController(button, lcd, on_long_idle=_toggle_only_alert)
+    controller = ButtonController(button, lcd, on_long_idle=lambda: _toggle_only_alert(args, lcd))
     button.on_press_start(lambda: buzzer.beep_async(count=1, duration_ms=150, gap_ms=0))
     button.on_held(lambda: buzzer.beep_async(count=1, duration_ms=400, gap_ms=0))
 
@@ -741,41 +781,16 @@ def run(args: argparse.Namespace) -> None:
     )
     lcd.on_screen_advance(notifier.on_screen_advance)
 
-    last_data = _read_all(monitors, r_cycle=0, effective_every=effective_every)
+    last_data = _read_all(monitors, r_cycle=0)
     initial_breached = {m.flag for m in monitors if m.has_breach(last_data)}
-    _apply_escalation(monitors, initial_breached, effective_every)
+    _apply_escalation(monitors, initial_breached)
     notifier.start(monitors, last_data, initial_breached, refresh_s=args.refresh)
 
     button.start()
     buzzer.beep_async(count=1, duration_ms=150, gap_ms=0)
 
-    r_cycle = 0
-    d_cycle = 0
-
     try:
-        while True:
-            time.sleep(args.refresh)
-            r_cycle += 1
-
-            wrapped = notifier.consume_wrap()
-            if wrapped:
-                d_cycle += 1
-
-            data = _read_all(monitors, r_cycle=r_cycle, effective_every=effective_every)
-            if not data and not wrapped:
-                continue
-            if data:
-                last_data = {**last_data, **data}
-
-            breached = {m.flag for m in monitors if m.has_breach(last_data)}
-            _apply_escalation(monitors, breached, effective_every)
-            notifier.update(monitors, last_data, breached, d_cycle, wrapped=wrapped)
-
-            if args.fan_enabled and last_data.get("cpu_temp_c", 0.0) >= args.temp_warn:
-                _ensure_fan(args)
-
-    except KeyboardInterrupt:
-        pass
+        _run_loop(monitors, notifier, args, last_data)
     finally:
         buzzer.beep(count=1, duration_ms=150)
         button.stop()

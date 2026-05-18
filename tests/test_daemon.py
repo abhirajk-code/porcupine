@@ -1254,3 +1254,84 @@ def test_ensure_fan_omits_freq_when_none(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
     daemon._ensure_fan(_args(fan_enabled=True, fan_freq=None, temp_warn=80.0))
     assert "--fan-freq" not in spawned[0]
+
+
+# ---------------------------------------------------------------------------
+# _Monitor.effective_every — escalation property
+# ---------------------------------------------------------------------------
+
+def test_monitor_effective_every_default():
+    m = daemon._TempMonitor(temp_warn=80.0, every=5)
+    assert m.effective_every == 5
+
+
+def test_monitor_effective_every_when_escalated():
+    m = daemon._TempMonitor(temp_warn=80.0, every=5)
+    m._escalated = True
+    assert m.effective_every == 1
+
+
+# ---------------------------------------------------------------------------
+# _apply_escalation — monitor-owned escalation state
+# ---------------------------------------------------------------------------
+
+def test_apply_escalation_escalates_breached_alertable():
+    args = _args(temp_every=5, boot_every=0, power_every=0, cpu_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    temp_m = next(m for m in monitors if m.flag == "temp")
+    assert temp_m.effective_every == 5
+    daemon._apply_escalation(monitors, {"temp"})
+    assert temp_m.effective_every == 1
+
+
+def test_apply_escalation_restores_after_breach_clears():
+    args = _args(temp_every=5, boot_every=0, power_every=0, cpu_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    temp_m = next(m for m in monitors if m.flag == "temp")
+    daemon._apply_escalation(monitors, {"temp"})
+    assert temp_m.effective_every == 1
+    daemon._apply_escalation(monitors, set())
+    assert temp_m.effective_every == 5
+
+
+def test_apply_escalation_skips_non_alertable():
+    args = _args(boot_every=5, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=0)
+    monitors = _monitors(args)
+    boot_m = next(m for m in monitors if m.flag == "boot")
+    daemon._apply_escalation(monitors, {"boot"})
+    assert boot_m.effective_every == 5  # non-alertable: never escalated
+
+
+# ---------------------------------------------------------------------------
+# _toggle_only_alert — module-level function
+# ---------------------------------------------------------------------------
+
+def test_toggle_only_alert_flips_flag_in_config(tmp_path):
+    config_file = tmp_path / "porcupine.conf"
+    config_file.write_text("[display]\nonly_alert = false\n")
+    args = _args(config=str(config_file))
+    lcd = MagicMock()
+    with patch("porcupine.daemon.subprocess.run"), \
+         patch("porcupine.daemon.time.sleep"):
+        daemon._toggle_only_alert(args, lcd)
+    import configparser as _cp
+    cp = _cp.ConfigParser()
+    cp.read(str(config_file))
+    assert cp.getboolean("display", "only_alert") is True
+
+
+def test_toggle_only_alert_toggles_back_to_false(tmp_path):
+    config_file = tmp_path / "porcupine.conf"
+    config_file.write_text("[display]\nonly_alert = true\n")
+    args = _args(config=str(config_file))
+    lcd = MagicMock()
+    with patch("porcupine.daemon.subprocess.run"), \
+         patch("porcupine.daemon.time.sleep"):
+        daemon._toggle_only_alert(args, lcd)
+    import configparser as _cp
+    cp = _cp.ConfigParser()
+    cp.read(str(config_file))
+    assert cp.getboolean("display", "only_alert") is False
