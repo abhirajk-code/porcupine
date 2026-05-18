@@ -34,14 +34,9 @@ def _duty(temp: float, fan_on: float, min_duty: int) -> float:
 def _find_gpiochip() -> int:
     """Return the gpiochip number whose label matches the BCM/RP1 GPIO controller."""
     for chip in range(8):
-        label_path = Path(f"/sys/bus/platform/drivers")
-        chip_path  = Path(f"/dev/gpiochip{chip}")
+        chip_path = Path(f"/dev/gpiochip{chip}")
         if not chip_path.exists():
             continue
-        try:
-            label = Path(f"/sys/class/gpio/gpiochip{chip * 0}/label").read_text().strip()
-        except OSError:
-            label = ""
         # Accept any chip that we can open — caller will verify
         return chip
     return 0

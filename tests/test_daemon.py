@@ -1,5 +1,7 @@
 """Daemon wiring tests — no hardware required."""
 import argparse
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -925,6 +927,190 @@ def test_notifier_update_passes_reset_position_on_wrap():
 
     _, kwargs = lcd.update_screens.call_args
     assert kwargs.get("reset_position") is True
+
+
+def test_gpio_both_pages_appear_at_d_cycle_2():
+    """With gpio_every=2, both GPIO pages must appear at d_cycle=2 (not only 0)."""
+    args = _args(boot_every=0, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=2)
+    monitors = _monitors(args)
+    data = {"gpio_pins": [None] * 40}
+    for d in (0, 2, 4, 6):
+        screens, tags = daemon._build_screens_tagged(monitors, data, d_cycle=d)
+        gpio_screens = [s for s, t in zip(screens, tags) if t == "gpio"]
+        assert len(gpio_screens) == 2, f"both GPIO pages must appear at d_cycle={d}"
+
+
+def test_gpio_page2_appears_after_list_expansion_with_reset():
+    """
+    Simulate the d_cycle=1→2 transition: LCD had a short list, update_screens
+    expands it with reset_position=True; GPIO page 2 must still be reached.
+    """
+    lcd = LCD(cols=16, rows=2)
+    # d_cycle=1 state: only temp, LCD sitting at index 0
+    lcd._screens = [("Temperature", "50.0C")]
+    lcd._index = 0
+
+    # d_cycle=2: expand to include both GPIO pages
+    gpio_p2 = ("21[          ]39", "22[          ]40")
+    lcd.update_screens(
+        [("Temperature", "50.0C"), ("01[          ]19", "02[          ]20"), gpio_p2],
+        reset_position=True,
+    )
+
+    assert lcd._index == 0
+    # After reset, cycling from 0: next index is 1 (GPIO-1), then 2 (GPIO-2)
+    rendered = []
+    for _ in range(3):
+        with lcd._lock:
+            lcd._index = (lcd._index + 1) % len(lcd._screens)
+            rendered.append(lcd._screens[lcd._index])
+
+    assert gpio_p2 in rendered, "GPIO page 2 must be reachable after list expansion"
+
+
+def test_gpio_page2_not_skipped_by_index_clamping():
+    """
+    Without reset_position, a high _index clamped into a newly-expanded list
+    can land on GPIO-2 and skip GPIO-1 in one rotation.  With reset_position=True
+    the index always starts at 0 so both pages are guaranteed to appear.
+    """
+    lcd = LCD(cols=16, rows=2)
+    # Simulate LCD was at index 2 in an 8-screen list (d_cycle=1)
+    lcd._screens = [("Boot", "")] * 8
+    lcd._index = 2
+
+    gpio_p1 = ("01[          ]19", "02[          ]20")
+    gpio_p2 = ("21[          ]39", "22[          ]40")
+    new_screens = [("Temperature", ""), gpio_p1, gpio_p2]
+
+    # Without reset_position: min(2, 2) = 2 → starts at GPIO-2, skips GPIO-1
+    lcd.update_screens(new_screens, reset_position=False)
+    assert lcd._index == 2  # landed on GPIO-2
+
+    # With reset_position: always starts at 0 → full rotation shows both pages
+    lcd._index = 2
+    lcd.update_screens(new_screens, reset_position=True)
+    assert lcd._index == 0
+
+
+def test_lcd_thread_renders_gpio_page2_in_full_rotation():
+    """
+    End-to-end: with a 3-screen list the LCD background thread must render
+    index 2 (GPIO page 2) within two full rotations.
+    """
+    lcd = LCD(cols=16, rows=2)
+    gpio_p2_line1 = "21[          ]39"
+    screens = [
+        ("Boot", ""),
+        ("01[          ]19", "02[          ]20"),
+        (gpio_p2_line1, "22[          ]40"),
+    ]
+
+    rendered_indices = []
+    lcd.on_screen_advance(lambda idx: rendered_indices.append(idx))
+    lcd.start(screens, refresh_s=0.01)
+    time.sleep(0.12)   # 12 ticks ≥ 4 full rotations of 3 screens
+    lcd.stop()
+
+    assert 2 in rendered_indices, (
+        f"LCD thread never reached index 2 (GPIO page 2). Indices rendered: {rendered_indices}"
+    )
+
+
+def test_stale_wrap_cleared_after_reset():
+    """
+    Reproduces the race where a single-screen d_cycle fires an extra wrap event
+    between consume_wrap() and update_screens(), causing d_cycle to advance
+    prematurely and skip GPIO page 2.
+
+    After notifier.update(wrapped=True), any stale _lcd_wrapped must be cleared
+    so the next consume_wrap() returns False until the LCD genuinely completes
+    a full rotation of the new screen list.
+    """
+    from unittest.mock import MagicMock
+    lcd_mock = MagicMock(spec=LCD)
+    lcd_mock.frozen = False
+    buzzer_mock = MagicMock()
+    controller_mock = MagicMock()
+
+    notifier = daemon._Notifier(lcd_mock, buzzer_mock, controller_mock, only_alert=False)
+    notifier.on_screen_advance = notifier.on_screen_advance  # ensure method exists
+
+    # Simulate the LCD firing an extra wrap event (index=0) during a
+    # single-screen rotation — exactly what happens between consume_wrap()
+    # and update_screens() in the main loop.
+    notifier._lcd_wrapped.set()          # stale event from single-screen rotation
+
+    args = _args(temp_every=1, gpio_every=2)
+    monitors = _monitors(args)
+    data = {"cpu_temp_c": 40.0, "gpio_pins": [None] * 40}
+
+    # update(wrapped=True) should clear the stale event after calling update_screens
+    notifier.update(monitors, data, set(), d_cycle=2, wrapped=True)
+
+    # The stale wrap must have been discarded — not a real rotation-complete signal
+    assert not notifier.consume_wrap(), (
+        "Stale wrap event survived notifier.update(wrapped=True); "
+        "this would cause d_cycle to advance prematurely and skip GPIO page 2"
+    )
+
+
+def test_both_gpio_pages_appear_across_d_cycle_transitions():
+    """
+    Full simulation: main-loop calling update_screens as d_cycle advances
+    through 0→1→2.  GPIO page 2 must appear in the d_cycle=2 rotation even
+    when the LCD fired extra ticks between the wrap and the update_screens call.
+    """
+    REFRESH = 0.01
+
+    args = _args(boot_every=1, power_every=0, cpu_every=0, temp_every=0,
+                 net_every=0, gpio_every=2, disk_every=0, conn_every=0, wifi_every=0)
+    monitors = _monitors(args)
+    data = {"boot_count": 1, "uptime_s": 0, "gpio_pins": [None] * 40}
+
+    lcd = LCD(cols=16, rows=2)
+    wrap_event = threading.Event()
+    d_cycle = 0
+    rendered = []
+    render_lock = threading.Lock()
+
+    def on_advance(idx):
+        nonlocal d_cycle
+        if idx == 0 and not lcd.frozen:
+            wrap_event.set()
+        with lcd._lock:
+            if idx < len(lcd._screens):
+                with render_lock:
+                    rendered.append(lcd._screens[idx][0])
+
+    lcd.on_screen_advance(on_advance)
+
+    screens0, _ = daemon._build_screens_tagged(monitors, data, d_cycle=0)
+    lcd.start(screens0, refresh_s=REFRESH)
+
+    for _ in range(60):
+        time.sleep(REFRESH)
+        wrapped = False
+        if wrap_event.is_set():
+            wrap_event.clear()
+            wrapped = True
+            d_cycle += 1
+        new_screens, _ = daemon._build_screens_tagged(monitors, data, d_cycle=d_cycle)
+        lcd.update_screens(new_screens, reset_position=wrapped)
+
+    lcd.stop()
+
+    with render_lock:
+        all_rendered = list(rendered)
+
+    gpio_p1_seen = any("01[" in s for s in all_rendered)
+    gpio_p2_seen = any("21[" in s for s in all_rendered)
+    assert gpio_p1_seen, "GPIO page 1 never rendered across d_cycle transitions"
+    assert gpio_p2_seen, (
+        f"GPIO page 2 never rendered across d_cycle transitions.\n"
+        f"Rendered: {all_rendered}"
+    )
 
 
 # ---------------------------------------------------------------------------
