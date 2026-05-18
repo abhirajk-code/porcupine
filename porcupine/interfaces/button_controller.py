@@ -2,6 +2,7 @@
 import subprocess
 import threading
 import time
+from typing import Callable
 
 from .button import Button
 from .lcd import LCD
@@ -26,7 +27,7 @@ class ButtonController:
     _WINDOW_S    = 5.0
     _COUNTDOWN_S = 20
 
-    def __init__(self, button: Button, lcd: LCD, on_long_idle=None):
+    def __init__(self, button: Button, lcd: LCD, on_long_idle: Callable[[], None] | None = None) -> None:
         self._lcd    = lcd
         self._lcd_on = True
         self._frozen = False

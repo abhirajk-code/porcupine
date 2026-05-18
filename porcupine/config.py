@@ -79,7 +79,7 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     return result
 
 
-def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Namespace:
     """
     Parse CLI arguments with three-level precedence:
       CLI flag  >  config file  >  hardcoded default

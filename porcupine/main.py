@@ -3,7 +3,7 @@ from .config import parse_args
 from .daemon import run
 
 
-def main():
+def main() -> None:
     args = parse_args()
     run(args)
 
