@@ -67,9 +67,18 @@ def test_parse_args_defaults():
     assert args.min_duty == 30
 
 
+def test_parse_args_freq_default_is_none():
+    assert fan_control.parse_args([]).fan_freq is None
+
+
 def test_parse_args_4pin():
     args = fan_control.parse_args(["--fan-type", "4pin"])
     assert args.fan_type == "4pin"
+
+
+def test_parse_args_explicit_freq():
+    args = fan_control.parse_args(["--fan-freq", "10000"])
+    assert args.fan_freq == 10000
 
 
 def test_parse_args_custom_values():

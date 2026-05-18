@@ -71,6 +71,8 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
         result["fan_type"] = cp.get("fan", "fan_type")
     if cp.has_option("fan", "fan_enabled"):
         result["fan_enabled"] = cp.getboolean("fan", "fan_enabled")
+    if cp.has_option("fan", "fan_freq"):
+        result["fan_freq"] = cp.getint("fan", "fan_freq")
     if cp.has_option("fan", "fan_min_duty"):
         result["fan_min_duty"] = cp.getint("fan", "fan_min_duty")
 
@@ -194,6 +196,12 @@ def parse_args(argv=None, config_path: str = DEFAULT_CONFIG_PATH) -> argparse.Na
         help="Enable PWM fan control; fan starts at temp_warn, stops at temp_warn × 0.8 (default: false)",
     )
     parser.add_argument(
+        "--fan-freq", type=int,
+        default=file_cfg.get("fan_freq", None),
+        metavar="HZ",
+        help="PWM frequency in Hz; overrides fan-type default (3pin=1000 Hz, 4pin=25000 Hz)",
+    )
+    parser.add_argument(
         "--fan-min-duty", type=int,
         default=file_cfg.get("fan_min_duty", 30),
         metavar="PCT",
@@ -240,6 +248,8 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     if args.fan_enabled:
         if not (0 <= args.fan_pin <= 27):
             errors.append(f"--fan-pin {args.fan_pin} is out of range (0–27)")
+    if args.fan_freq is not None and not (100 <= args.fan_freq <= 100_000):
+        errors.append(f"--fan-freq {args.fan_freq} must be between 100 and 100000 Hz")
     if not (0 <= args.fan_min_duty <= 100):
         errors.append(f"--fan-min-duty {args.fan_min_duty} must be between 0 and 100")
 

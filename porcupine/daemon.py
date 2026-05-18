@@ -648,14 +648,17 @@ def _ensure_fan(args: argparse.Namespace) -> None:
     if _fan_running():
         return
     fan_bin = Path(sys.executable).parent / "porcupine-fan"
+    cmd = [
+        str(fan_bin),
+        "--fan-pin",  str(args.fan_pin),
+        "--fan-type", args.fan_type,
+        "--fan-on",   str(args.temp_warn),
+        "--min-duty", str(args.fan_min_duty),
+    ]
+    if args.fan_freq is not None:
+        cmd += ["--fan-freq", str(args.fan_freq)]
     subprocess.Popen(
-        [
-            str(fan_bin),
-            "--fan-pin",  str(args.fan_pin),
-            "--fan-type", args.fan_type,
-            "--fan-on",   str(args.temp_warn),
-            "--min-duty", str(args.fan_min_duty),
-        ],
+        cmd,
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

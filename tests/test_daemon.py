@@ -20,7 +20,7 @@ def _args(**overrides) -> argparse.Namespace:
         refresh=3.0,
         temp_warn=80.0, cpu_warn=90.0, mem_warn=90.0, bat_warn=40.0, disk_warn=85.0,
         conn_host="8.8.8.8", alert_log=None, only_alert=False,
-        fan_enabled=False, fan_pin=19, fan_type="3pin", fan_min_duty=30,
+        fan_enabled=False, fan_pin=19, fan_type="3pin", fan_freq=None, fan_min_duty=30,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -1049,3 +1049,22 @@ def test_ensure_fan_4pin_passes_correct_type(tmp_path, monkeypatch):
     assert "4pin" in cmd
     assert "13" in cmd
     assert "20" in cmd
+
+
+def test_ensure_fan_passes_freq_when_set(tmp_path, monkeypatch):
+    monkeypatch.setattr(daemon, "_FAN_PID_FILE", tmp_path / "fan.pid")
+    spawned = []
+    monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
+    args = _args(fan_enabled=True, fan_freq=10000, temp_warn=80.0)
+    daemon._ensure_fan(args)
+    cmd = spawned[0]
+    assert "--fan-freq" in cmd
+    assert "10000" in cmd
+
+
+def test_ensure_fan_omits_freq_when_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(daemon, "_FAN_PID_FILE", tmp_path / "fan.pid")
+    spawned = []
+    monkeypatch.setattr(daemon.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
+    daemon._ensure_fan(_args(fan_enabled=True, fan_freq=None, temp_warn=80.0))
+    assert "--fan-freq" not in spawned[0]

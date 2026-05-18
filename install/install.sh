@@ -134,6 +134,7 @@ configure_interactive() {
     local d_only;   d_only="$(_cfg_get   display  only_alert false)"
     local d_fanpin; d_fanpin="$(_cfg_get fan      fan_pin      19)"
     local d_ftype;  d_ftype="$(_cfg_get  fan      fan_type     3pin)"
+    local d_ffreq;  d_ffreq="$(_cfg_get  fan      fan_freq     0)"
     local d_fduty;  d_fduty="$(_cfg_get  fan      fan_min_duty 30)"
     local d_fan;    d_fan="$(_cfg_get    fan      fan_enabled  false)"
 
@@ -172,9 +173,10 @@ configure_interactive() {
     if [[ "$ENABLE_FAN" == "true" ]]; then
         prompt "Fan GPIO pin (BCM)"                             "$d_fanpin" FAN_PIN
         prompt "Fan type  (3pin = 1 kHz, 4pin = 25 kHz)"       "$d_ftype"  FAN_TYPE
+        prompt "PWM frequency Hz (0 = use fan-type default)"    "$d_ffreq"  FAN_FREQ
         prompt "Minimum duty cycle (%, prevents stall)"         "$d_fduty"  FAN_MIN_DUTY
     else
-        FAN_PIN="$d_fanpin"; FAN_TYPE="$d_ftype"; FAN_MIN_DUTY="$d_fduty"
+        FAN_PIN="$d_fanpin"; FAN_TYPE="$d_ftype"; FAN_FREQ="$d_ffreq"; FAN_MIN_DUTY="$d_fduty"
     fi
 }
 
@@ -187,7 +189,7 @@ configure_noninteractive() {
     TEMP_WARN="80"; CPU_WARN="90"; MEM_WARN="90"; BAT_WARN="40"; DISK_WARN="85"
     CONN_HOST="8.8.8.8"; ALERT_LOG="/var/log/porcupine/alerts.log"
     # Fan: disabled by default
-    ENABLE_FAN="false"; FAN_PIN="19"; FAN_TYPE="3pin"; FAN_MIN_DUTY="30"
+    ENABLE_FAN="false"; FAN_PIN="19"; FAN_TYPE="3pin"; FAN_FREQ="0"; FAN_MIN_DUTY="30"
     info "Non-interactive — using all defaults"
 }
 
@@ -245,6 +247,7 @@ alert_log = ${ALERT_LOG}
 fan_enabled  = ${ENABLE_FAN}
 fan_pin      = ${FAN_PIN}
 fan_type     = ${FAN_TYPE}
+fan_freq     = ${FAN_FREQ}
 fan_min_duty = ${FAN_MIN_DUTY}
 EOF
     ok "Config written → $CONFIG_FILE"

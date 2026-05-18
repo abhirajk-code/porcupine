@@ -169,6 +169,7 @@ cmd_set() {
         fan-enabled)      cfg_set fan      fan_enabled   "$value";;
         fan-pin)          cfg_set fan      fan_pin       "$value";;
         fan-type)         cfg_set fan      fan_type      "$value";;
+        fan-freq)         cfg_set fan      fan_freq      "$value";;
         fan-min-duty)     cfg_set fan      fan_min_duty  "$value";;
         *) die "unknown parameter '$param' — run 'porcupine help' for supported params";;
     esac
@@ -213,7 +214,8 @@ Commands:
   set conn-host <host>     Host to probe for connectivity    (default 8.8.8.8)
   set fan-enabled <true|false>  Enable fan control (starts at temp_warn, stops at temp_warn×0.8)
   set fan-pin <n>          Fan GPIO pin (BCM)                (default 19)
-  set fan-type <3pin|4pin> Fan PWM frequency                 (default 3pin)
+  set fan-type <3pin|4pin> Fan type — sets default frequency (default 3pin)
+  set fan-freq <hz>        PWM frequency override in Hz; 0 = use fan-type default
   set fan-min-duty <%>     Fan minimum duty cycle            (default 30)
 
   showlogs error           Show warnings and errors from the service journal

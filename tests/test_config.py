@@ -409,6 +409,30 @@ def test_parse_args_fan_cli_overrides_config(tmp_path):
     assert args.fan_type    == "4pin"
 
 
+def test_parse_args_fan_freq_default_is_none(tmp_path):
+    args = parse_args([], config_path=str(tmp_path / "none.conf"))
+    assert args.fan_freq is None
+
+
+def test_parse_args_fan_freq_cli(tmp_path):
+    args = parse_args(["--fan-freq", "10000"], config_path=str(tmp_path / "none.conf"))
+    assert args.fan_freq == 10000
+
+
+def test_load_config_reads_fan_freq(tmp_path):
+    path = write_conf(tmp_path, """
+        [fan]
+        fan_freq = 10000
+    """)
+    assert load_config(path)["fan_freq"] == 10000
+
+
+def test_validate_fan_freq_out_of_range(tmp_path):
+    cfg = str(tmp_path / "none.conf")
+    with pytest.raises(SystemExit):
+        parse_args(["--fan-freq", "50"], config_path=cfg)
+
+
 def test_validate_fan_invalid_min_duty_rejected(tmp_path):
     cfg = str(tmp_path / "none.conf")
     with pytest.raises(SystemExit):

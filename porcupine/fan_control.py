@@ -129,7 +129,7 @@ class _PWM:
 
 
 def run(args: argparse.Namespace) -> None:
-    freq    = 25_000 if args.fan_type == "4pin" else 1_000
+    freq    = args.fan_freq if args.fan_freq is not None else (25_000 if args.fan_type == "4pin" else 1_000)
     stop_at = args.fan_on * 0.8
 
     _PID_FILE.write_text(str(os.getpid()))
@@ -170,6 +170,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="porcupine-fan", description="Porcupine fan controller")
     p.add_argument("--fan-pin",  type=int,   default=19,   metavar="PIN")
     p.add_argument("--fan-type", choices=["3pin", "4pin"], default="3pin")
+    p.add_argument("--fan-freq", type=int,   default=None, metavar="HZ",
+                   help="PWM frequency in Hz; overrides fan-type default (3pin=1000, 4pin=25000)")
     p.add_argument("--fan-on",   type=float, default=45.0, metavar="C")
     p.add_argument("--min-duty", type=int,   default=30,   metavar="PCT")
     return p.parse_args(argv)
