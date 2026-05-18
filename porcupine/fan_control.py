@@ -26,7 +26,7 @@ def _read_temp() -> float:
 
 def _duty(temp: float, fan_on: float, min_duty: int) -> float:
     """Proportional duty cycle: min_duty % at fan_on °C, 100 % at 85 °C."""
-    span = max(85.0 - fan_on, 1.0)
+    span = max(85.0 - fan_on, 1.0)  # 85 °C = Pi thermal-throttle ceiling
     raw  = min_duty + (temp - fan_on) / span * (100 - min_duty)
     return max(float(min_duty), min(100.0, raw))
 
@@ -124,8 +124,9 @@ class _PWM:
 
 
 def run(args: argparse.Namespace) -> None:
-    freq    = args.fan_freq if args.fan_freq is not None else (25_000 if args.fan_type == "4pin" else 1_000)
-    stop_at = args.fan_on * 0.8
+    freq          = args.fan_freq if args.fan_freq is not None else (25_000 if args.fan_type == "4pin" else 1_000)
+    # 20 % hysteresis: fan shuts off 20 % below the trigger temperature
+    fan_stop_temp = args.fan_on * 0.8
 
     _PID_FILE.write_text(str(os.getpid()))
 
@@ -150,7 +151,7 @@ def run(args: argparse.Namespace) -> None:
             except OSError:
                 time.sleep(_POLL_S)
                 continue
-            if temp < stop_at:
+            if temp < fan_stop_temp:
                 break
             pwm.change_duty(_duty(temp, args.fan_on, args.min_duty))
             time.sleep(_POLL_S)
