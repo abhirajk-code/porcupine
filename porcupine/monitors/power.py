@@ -68,7 +68,6 @@ def _write(reg: int, value: int) -> None:
 
 
 def _read_current() -> float:
-    _write(_REG_CALIBRATION, _CAL_VALUE)
     raw = _read(_REG_CURRENT)
     if raw > 32767:
         raw -= 65536
@@ -76,6 +75,5 @@ def _read_current() -> float:
 
 
 def _read_bus_voltage() -> float:
-    _write(_REG_CALIBRATION, _CAL_VALUE)
     raw = _read(_REG_BUSVOLTAGE)
     return (raw >> 3) * 0.004
