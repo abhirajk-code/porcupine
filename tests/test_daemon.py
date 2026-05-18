@@ -1018,6 +1018,44 @@ def test_lcd_thread_renders_gpio_page2_in_full_rotation():
     )
 
 
+def test_stale_wrap_cleared_after_reset():
+    """
+    Reproduces the race where a single-screen d_cycle fires an extra wrap event
+    between consume_wrap() and update_screens(), causing d_cycle to advance
+    prematurely and skip GPIO page 2.
+
+    After notifier.update(wrapped=True), any stale _lcd_wrapped must be cleared
+    so the next consume_wrap() returns False until the LCD genuinely completes
+    a full rotation of the new screen list.
+    """
+    from unittest.mock import MagicMock
+    lcd_mock = MagicMock(spec=LCD)
+    lcd_mock.frozen = False
+    buzzer_mock = MagicMock()
+    controller_mock = MagicMock()
+
+    notifier = daemon._Notifier(lcd_mock, buzzer_mock, controller_mock, only_alert=False)
+    notifier.on_screen_advance = notifier.on_screen_advance  # ensure method exists
+
+    # Simulate the LCD firing an extra wrap event (index=0) during a
+    # single-screen rotation — exactly what happens between consume_wrap()
+    # and update_screens() in the main loop.
+    notifier._lcd_wrapped.set()          # stale event from single-screen rotation
+
+    args = _args(temp_every=1, gpio_every=2)
+    monitors = _monitors(args)
+    data = {"cpu_temp_c": 40.0, "gpio_pins": [None] * 40}
+
+    # update(wrapped=True) should clear the stale event after calling update_screens
+    notifier.update(monitors, data, set(), d_cycle=2, wrapped=True)
+
+    # The stale wrap must have been discarded — not a real rotation-complete signal
+    assert not notifier.consume_wrap(), (
+        "Stale wrap event survived notifier.update(wrapped=True); "
+        "this would cause d_cycle to advance prematurely and skip GPIO page 2"
+    )
+
+
 def test_both_gpio_pages_appear_across_d_cycle_transitions():
     """
     Full simulation: main-loop calling update_screens as d_cycle advances

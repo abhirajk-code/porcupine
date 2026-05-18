@@ -585,6 +585,12 @@ class _Notifier:
                 _with_alert_indicator(display_screens, bool(new_breached)),
                 reset_position=wrapped,
             )
+        # A single-screen rotation fires on_screen_advance(0) every tick, so
+        # an extra wrap event can land in the gap between consume_wrap() and
+        # this update_screens call.  Clearing it here prevents the next
+        # d_cycle from being entered prematurely (which would skip gpio_p2).
+        if wrapped:
+            self._lcd_wrapped.clear()
 
 
 # ---------------------------------------------------------------------------
