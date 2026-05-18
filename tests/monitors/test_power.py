@@ -140,3 +140,16 @@ def test_read_returns_expected_keys():
     power_mod._bus = None
     result = power_mod.read()
     assert set(result) == {"power_source", "battery_pct"}
+
+
+def test_read_does_not_write_calibration_register():
+    """read() must not re-write the calibration register; init() owns that."""
+    v_raw = (int(11.0 / 0.004)) << 3
+    mock_bus = _make_mock_bus(current_raw=100, bus_voltage_raw=v_raw)
+    power_mod._bus  = mock_bus
+    power_mod._addr = 0x41
+
+    power_mod.read()
+
+    written_regs = [c[0][1] for c in mock_bus.write_i2c_block_data.call_args_list]
+    assert power_mod._REG_CALIBRATION not in written_regs
