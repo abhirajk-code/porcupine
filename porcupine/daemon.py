@@ -2,14 +2,12 @@
 import argparse
 import configparser
 import logging
-import math
 import os
 import signal
 import subprocess
 import sys
 import threading
 import time
-from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
 
@@ -17,7 +15,17 @@ from .interfaces.button import Button
 from .interfaces.button_controller import ButtonController
 from .interfaces.buzzer import Buzzer
 from .interfaces.lcd import LCD
-from .monitors import boot, connectivity, cpu_mem, disk, gpio_pins, network, power, temperature, wifi
+from .monitors import boot, connectivity, cpu_mem, power, wifi  # noqa: F401 (tests patch via daemon.X.read/init)
+from .monitors.base import _Monitor
+from .monitors.boot_monitor import _BootMonitor
+from .monitors.connectivity_monitor import _ConnectivityMonitor
+from .monitors.cpu_mem_monitor import _CpuMemMonitor
+from .monitors.disk_monitor import _DiskMonitor
+from .monitors.gpio_monitor import _GpioMonitor
+from .monitors.network_monitor import _NetMonitor, _bps_str  # noqa: F401 (tests access daemon._bps_str)
+from .monitors.power_monitor import _PowerMonitor
+from .monitors.temperature_monitor import _TempMonitor
+from .monitors.wifi_monitor import _WifiMonitor
 
 
 # ---------------------------------------------------------------------------
@@ -42,316 +50,6 @@ _CGRAM: list[list[int]] = [
     [0b01110, 0b10001, 0b10001, 0b11111, 0b11011, 0b11011, 0b11111, 0b00000],  # slot 4: lock
     [0b00000, 0b01110, 0b11011, 0b11011, 0b11111, 0b11011, 0b01110, 0b00000],  # slot 5: warn
 ]
-
-# Map gpio_pins state strings → display character
-_GPIO_CHARS: dict[str | None, str] = {
-    "3v3":   "^",
-    "5v":    "+",
-    "gnd":   "-",
-    "out_h": chr(0),
-    "out_l": chr(1),
-    "in_h":  chr(2),
-    "in_l":  chr(3),
-    None:    " ",
-}
-
-_KB = 1024
-_MB = 1024 * 1024
-
-
-def _bps_str(bps: float) -> str:
-    if bps >= _MB:
-        mb = bps / _MB
-        return f"{mb:.0f}M" if mb >= 100 else f"{mb:.1f}M"
-    if bps >= _KB:
-        kb = bps / _KB
-        return f"{kb:.0f}K" if kb >= 100 else f"{kb:.1f}K"
-    return f"{int(bps)}B"
-
-
-def _gb_fmt(gb: float) -> str:
-    """Format gigabytes compactly — one decimal below 100 GB, integer above."""
-    return f"{gb:.0f}" if gb >= 100 else f"{gb:.1f}"
-
-
-def _is_valid(value: object) -> bool:
-    return value is not None and not (isinstance(value, float) and math.isnan(value))
-
-
-# ---------------------------------------------------------------------------
-# Monitor objects — own reading, formatting, breach detection, and beep pattern
-# ---------------------------------------------------------------------------
-
-class _Monitor(ABC):
-    """Per-feature monitor with a uniform interface for the orchestrator."""
-    flag: str
-
-    def __init__(self, every: int = 0) -> None:
-        self.every = every
-        self._escalated: bool = False
-
-    @property
-    def effective_every(self) -> int:
-        """Read cadence: 1 when a breach is active, configured every otherwise."""
-        return 1 if self._escalated else self.every
-
-    @abstractmethod
-    def read(self) -> dict: ...
-
-    @abstractmethod
-    def format_screens(self, data: dict) -> list[tuple[str, str]]: ...
-
-    def has_breach(self, data: dict) -> bool:
-        return False
-
-    def beep_pattern(self) -> dict | None:
-        return None
-
-
-class _BootMonitor(_Monitor):
-    flag = "boot"
-
-    def __init__(self, every: int = 0) -> None:
-        super().__init__(every)
-
-    def read(self) -> dict:
-        return boot.read()
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        uptime = int(data.get("uptime_s", 0))
-        return [("Boot", f"#{data.get('boot_count', 0)} {uptime // 3600}h{uptime % 3600 // 60:02d}m")]
-
-
-class _PowerMonitor(_Monitor):
-    flag = "power"
-
-    def __init__(self, bat_warn: float = 40.0, every: int = 0) -> None:
-        super().__init__(every)
-        self._bat_warn = bat_warn
-
-    def read(self) -> dict:
-        return power.read()
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        source = data.get("power_source", "Unknown")
-        pct    = data.get("battery_pct", float("nan"))
-        if not math.isnan(pct):
-            warn   = source == "Battery" and pct < self._bat_warn
-            suffix = f" {pct:.0f}%" + (" WARN" if warn else "")
-        else:
-            suffix = ""
-        return [("Power", f"{source}{suffix}")]
-
-    def has_breach(self, data: dict) -> bool:
-        pct = data.get("battery_pct")
-        return (
-            _is_valid(pct)
-            and data.get("power_source") == "Battery"
-            and pct < self._bat_warn
-        )
-
-    def beep_pattern(self) -> dict:
-        return {"count": 1, "duration_ms": 600, "gap_ms": 0}
-
-
-class _CpuMemMonitor(_Monitor):
-    flag = "cpu"
-
-    def __init__(self, cpu_warn: float = 90.0, mem_warn: float = 90.0, every: int = 0) -> None:
-        super().__init__(every)
-        self._cpu_warn = cpu_warn
-        self._mem_warn = mem_warn
-
-    def read(self) -> dict:
-        return cpu_mem.read()
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        cpu   = data.get("cpu_avg_pct", 0)
-        mem   = data.get("mem_pct", 0)
-        cpu_s = "WARN" if cpu >= self._cpu_warn else f"{cpu:.0f}%"
-        mem_s = "WARN" if mem >= self._mem_warn else f"{mem:.0f}%"
-        return [(" CPU   Mem", f"{cpu_s:>4}  {mem_s:>4}")]
-
-    def has_breach(self, data: dict) -> bool:
-        cpu = data.get("cpu_avg_pct")
-        mem = data.get("mem_pct")
-        return (
-            (_is_valid(cpu) and cpu >= self._cpu_warn)
-            or (_is_valid(mem) and mem >= self._mem_warn)
-        )
-
-    def beep_pattern(self) -> dict:
-        return {"count": 2, "duration_ms": 200, "gap_ms": 100}
-
-
-class _TempMonitor(_Monitor):
-    flag = "temp"
-
-    def __init__(self, temp_warn: float = 80.0, every: int = 0) -> None:
-        super().__init__(every)
-        self._temp_warn = temp_warn
-
-    def read(self) -> dict:
-        return temperature.read()
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        temp      = data.get("cpu_temp_c", float("nan"))
-        throttled = data.get("throttled")
-        if not math.isnan(temp):
-            temp_str = f"{temp:.0f}C" if temp >= 100 else f"{temp:.1f}C"
-            parts    = []
-            if temp >= self._temp_warn:
-                parts.append("WARN")
-            if throttled:
-                parts.append("THRT")
-            suffix = (" " + "+".join(parts)) if parts else ""
-        else:
-            temp_str = "---"
-            suffix   = " THRT" if throttled else ""
-        return [("Temperature", f"{temp_str}{suffix}")]
-
-    def has_breach(self, data: dict) -> bool:
-        temp      = data.get("cpu_temp_c")
-        throttled = data.get("throttled")
-        return (
-            (_is_valid(temp) and temp >= self._temp_warn)
-            or throttled is True
-        )
-
-    def beep_pattern(self) -> dict:
-        return {"count": 3, "duration_ms": 200, "gap_ms": 100}
-
-
-class _NetMonitor(_Monitor):
-    flag = "net"
-
-    def __init__(self, every: int = 0) -> None:
-        super().__init__(every)
-
-    def read(self) -> dict:
-        return network.read()
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        return [(
-            f"Net {data.get('interface', '???')[:5]}",
-            f"R:{_bps_str(data.get('rx_bps', 0))} T:{_bps_str(data.get('tx_bps', 0))}",
-        )]
-
-
-class _GpioMonitor(_Monitor):
-    flag = "gpio"
-
-    def __init__(self, page: int, every: int = 0) -> None:
-        super().__init__(every)
-        self._page = page  # 1 = pins 1-20, 2 = pins 21-40
-
-    def read(self) -> dict:
-        return gpio_pins.read()
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        pins  = data.get("gpio_pins", [])
-        chars = [_GPIO_CHARS.get(s, " ") for s in pins]
-        chars += [" "] * (40 - len(chars))
-
-        def _row(indices: range, first_pin: int, last_pin: int) -> str:
-            return f"{first_pin:02d}[{''.join(chars[i] for i in indices)}]{last_pin:02d}"
-
-        if self._page == 1:
-            return [(_row(range( 0, 20, 2),  1, 19), _row(range( 1, 20, 2),  2, 20))]
-        else:
-            return [(_row(range(20, 40, 2), 21, 39), _row(range(21, 40, 2), 22, 40))]
-
-
-class _DiskMonitor(_Monitor):
-    flag = "disk"
-
-    def __init__(self, disk_warn: float = 85.0, every: int = 0) -> None:
-        super().__init__(every)
-        self._disk_warn = disk_warn
-
-    def read(self) -> dict:
-        return disk.read()
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        pct   = data.get("disk_pct",      float("nan"))
-        used  = data.get("disk_used_gb",  float("nan"))
-        total = data.get("disk_total_gb", float("nan"))
-        if not math.isnan(pct):
-            pct_s  = "WARN" if pct >= self._disk_warn else f"{pct:.0f}%"
-            size_s = f"{_gb_fmt(used)}/{_gb_fmt(total)}GB"
-        else:
-            pct_s  = "---"
-            size_s = ""
-        return [("Disk /", f"{pct_s} {size_s}".rstrip())]
-
-    def has_breach(self, data: dict) -> bool:
-        pct = data.get("disk_pct")
-        return _is_valid(pct) and pct >= self._disk_warn
-
-    def beep_pattern(self) -> dict:
-        return {"count": 2, "duration_ms": 400, "gap_ms": 200}
-
-
-class _WifiMonitor(_Monitor):
-    flag = "wifi"
-
-    def __init__(self, every: int = 0) -> None:
-        super().__init__(every)
-
-    def read(self) -> dict:
-        return wifi.read()
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        connected = data.get("wifi_connected")
-        ip        = data.get("wifi_ip")
-        signal    = data.get("wifi_signal_dbm", float("nan"))
-
-        sig_str = f" {signal:.0f}dBm" if not math.isnan(signal) else ""
-        header  = f"WiFi{sig_str}"
-
-        if connected is True:
-            line2 = ip or "No IP"
-        elif connected is False:
-            line2 = "Disconnected"
-        else:
-            line2 = "---"
-
-        return [(header, line2)]
-
-    def has_breach(self, data: dict) -> bool:
-        # Only breach when WiFi hardware is present but not connected
-        return data.get("wifi_connected") is False and data.get("wifi_iface") is not None
-
-    def beep_pattern(self) -> dict:
-        return {"count": 2, "duration_ms": 400, "gap_ms": 200}
-
-
-class _ConnectivityMonitor(_Monitor):
-    flag = "conn"
-
-    def __init__(self, host: str = "8.8.8.8", every: int = 0) -> None:
-        super().__init__(every)
-        self._host = host
-
-    def read(self) -> dict:
-        return connectivity.read(host=self._host)
-
-    def format_screens(self, data: dict) -> list[tuple[str, str]]:
-        reachable  = data.get("reachable")
-        latency_ms = data.get("latency_ms", float("nan"))
-        if reachable is True:
-            line2 = f"OK {latency_ms:.1f}ms"
-        elif reachable is False:
-            line2 = "UNREACHABLE"
-        else:
-            line2 = "---"
-        return [("Internet", line2)]
-
-    def has_breach(self, data: dict) -> bool:
-        return data.get("reachable") is False
-
-    def beep_pattern(self) -> dict:
-        return {"count": 3, "duration_ms": 300, "gap_ms": 150}
 
 
 def _make_monitors(args: argparse.Namespace) -> list[_Monitor]:
